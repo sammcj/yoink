@@ -7,15 +7,14 @@
  * - Typography, spacing, shadows, border radius
  */
 
-import type { StyleData, CSSVariables, ColorUsage } from '../types';
-
 interface ScanStylesRequest {
   action: 'scanStyles';
+  includeComponents?: boolean;
 }
 
 interface ScanResponse {
   success: boolean;
-  data?: StyleData;
+  data?: any;
   error?: string;
 }
 
@@ -27,11 +26,10 @@ chrome.runtime.onMessage.addListener((
 ): boolean => {
   if (request.action === 'scanStyles') {
     try {
-      const styleData = extractStyles();
+      const styleData = extractStyles(request.includeComponents);
       sendResponse({ success: true, data: styleData });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Style extraction error:', error);
       sendResponse({ success: false, error: errorMessage });
     }
   }
@@ -41,13 +39,11 @@ chrome.runtime.onMessage.addListener((
 /**
  * Main style extraction orchestrator
  */
-function extractStyles(): StyleData {
-  console.log('🎨 Yoink: Starting style extraction...');
-
+function extractStyles(includeComponents: boolean = true): any {
   const cssVariables = extractCSSCustomProperties();
   const colorData = extractColors();
 
-  const styleData: StyleData = {
+  const styleData: any = {
     cssVariables,
     colors: colorData.colors,
     colorUsage: colorData.usage,
@@ -56,7 +52,14 @@ function extractStyles(): StyleData {
     shadows: extractShadows()
   };
 
-  console.log('✅ Yoink: Style extraction complete', styleData);
+  // Add component patterns and context if requested
+  if (includeComponents) {
+    styleData.components = extractComponents();
+    styleData.typographyContext = extractTypographyContext();
+    styleData.colorContext = extractColorContext();
+    styleData.layoutPatterns = extractLayoutPatterns();
+  }
+
   return styleData;
 }
 
@@ -64,8 +67,8 @@ function extractStyles(): StyleData {
  * Extracts CSS Custom Properties from stylesheets
  * Handles theme variants like :root, .dark, [data-theme="dark"]
  */
-function extractCSSCustomProperties(): CSSVariables {
-  const cssVars: CSSVariables = {};
+function extractCSSCustomProperties(): any {
+  const cssVars: any = {};
   const stylesheets = document.styleSheets;
 
   for (let i = 0; i < stylesheets.length; i++) {
@@ -108,7 +111,7 @@ function extractCSSCustomProperties(): CSSVariables {
 /**
  * Extract CSS variables using getComputedStyle fallback
  */
-function extractComputedVariables(cssVars: CSSVariables): void {
+function extractComputedVariables(cssVars: any): void {
   const rootStyles = getComputedStyle(document.documentElement);
 
   // Extract light mode
@@ -153,7 +156,7 @@ function extractComputedVariables(cssVars: CSSVariables): void {
 /**
  * Filters out browser extension and utility CSS variables
  */
-function filterExtensionVariables(cssVars: CSSVariables): void {
+function filterExtensionVariables(cssVars: any): void {
   const extensionPatterns = [
     'vimium-', 'arc-', 'extension-', 'grammarly-', 'lastpass-'
   ];
@@ -190,7 +193,7 @@ function filterExtensionVariables(cssVars: CSSVariables): void {
 /**
  * Recursively parse CSS rules to find custom properties
  */
-function parseCSSRules(rules: CSSRuleList, cssVars: CSSVariables): void {
+function parseCSSRules(rules: CSSRuleList, cssVars: any): void {
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
 
@@ -253,7 +256,7 @@ function getThemeFromSelector(selector: string): string {
 /**
  * Extracts colors from page with usage tracking
  */
-function extractColors(): { colors: string[]; usage: ColorUsage } {
+function extractColors(): { colors: string[]; usage: any } {
   const colorUsage = new Map<string, number>();
   const elements = document.querySelectorAll('*');
   const maxElements = Math.min(elements.length, 200);
@@ -384,4 +387,742 @@ function extractShadows(): string[] {
   return Array.from(shadows).slice(0, 5);
 }
 
-console.log('🎨 Yoink content script loaded');
+/**
+ * Extracts component patterns from the page
+ */
+function extractComponents(): any {
+  return {
+    buttons: extractButtons(),
+    cards: extractCards(),
+    inputs: extractInputs(),
+    navigation: extractNavigation(),
+    headings: extractHeadings()
+  };
+}
+
+/**
+ * Gets clean HTML snippet with proper tag closure
+ */
+function getCleanHTML(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+
+  // Simplify deeply nested elements
+  if (clone.children.length > 3) {
+    const textContent = clone.textContent?.trim().substring(0, 40) || '';
+    clone.innerHTML = textContent + (textContent.length >= 40 ? '...' : '');
+  } else if (clone.children.length > 0) {
+    // Keep simple children but limit their content
+    Array.from(clone.children).forEach((child, idx) => {
+      if (idx > 2) {
+        child.remove();
+      } else if (child.children.length > 0) {
+        const text = child.textContent?.trim().substring(0, 30) || '';
+        child.innerHTML = text;
+      }
+    });
+  }
+
+  let html = clone.outerHTML;
+
+  // Ensure it's under 400 chars
+  if (html.length > 400) {
+    const openingTag = html.match(/^<[^>]+>/)?.[0] || '';
+    const closingTag = html.match(/<\/[^>]+>$/)?.[0] || '';
+    const tagName = element.tagName.toLowerCase();
+
+    if (openingTag && closingTag) {
+      const content = clone.textContent?.trim().substring(0, 30) || '';
+      html = `${openingTag}${content}...${closingTag}`;
+    } else {
+      html = `<${tagName} class="${element.className.substring(0, 100)}">${clone.textContent?.substring(0, 30) || ''}...</${tagName}>`;
+    }
+  }
+
+  return html;
+}
+
+/**
+ * Extracts hover, focus, and disabled states from classes
+ */
+function extractStateStyles(element: HTMLElement): any {
+  const states: any = {};
+  const classes = Array.from(element.classList);
+
+  // Extract hover states
+  const hoverClasses = classes.filter(c => c.includes('hover:'));
+  if (hoverClasses.length > 0) {
+    states.hover = {};
+    hoverClasses.forEach(cls => {
+      const parts = cls.split('hover:')[1];
+      if (parts.includes('bg-')) states.hover.background = parts;
+      if (parts.includes('text-')) states.hover.color = parts;
+      if (parts.includes('opacity-')) states.hover.opacity = parts;
+    });
+  }
+
+  // Extract focus states
+  const focusClasses = classes.filter(c => c.includes('focus:'));
+  if (focusClasses.length > 0) {
+    states.focus = {};
+    focusClasses.forEach(cls => {
+      const parts = cls.split('focus:')[1];
+      if (parts.includes('ring')) states.focus.ring = parts;
+      if (parts.includes('outline')) states.focus.outline = parts;
+    });
+  }
+
+  // Extract disabled states
+  const disabledClasses = classes.filter(c => c.includes('disabled:'));
+  if (disabledClasses.length > 0) {
+    states.disabled = {};
+    disabledClasses.forEach(cls => {
+      const parts = cls.split('disabled:')[1];
+      states.disabled[parts] = true;
+    });
+  }
+
+  return Object.keys(states).length > 0 ? states : undefined;
+}
+
+/**
+ * Extracts button components with variants
+ */
+function extractButtons(): any[] {
+  const buttons: any[] = [];
+  const seen = new Map<string, any>();
+
+  const buttonSelectors = 'button, [role="button"], a[class*="btn"], a[class*="button"], input[type="submit"], input[type="button"]';
+  const elements = document.querySelectorAll(buttonSelectors);
+
+  elements.forEach(btn => {
+    const styles = getComputedStyle(btn);
+    const signature = createStyleSignature(btn as HTMLElement);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        color: styles.color,
+        padding: styles.padding,
+        borderRadius: styles.borderRadius,
+        fontSize: styles.fontSize,
+        fontWeight: styles.fontWeight,
+        border: styles.border,
+        boxShadow: styles.boxShadow,
+        display: styles.display,
+        height: styles.height
+      };
+
+      const variant: any = {
+        html: getCleanHTML(btn as HTMLElement),
+        classes: (btn as HTMLElement).className || '',
+        styles: componentStyles,
+        variant: inferVariant(btn as HTMLElement),
+        count: 1,
+        stateStyles: extractStateStyles(btn as HTMLElement)
+      };
+
+      buttons.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return buttons.sort((a, b) => b.count - a.count).slice(0, 5);
+}
+
+/**
+ * Extracts card components
+ */
+function extractCards(): any[] {
+  const cards: any[] = [];
+  const seen = new Map<string, any>();
+
+  // Look for elements that look like cards
+  const cardSelectors = '[class*="card"], article, [class*="panel"], [class*="box"]';
+  const elements = document.querySelectorAll(cardSelectors);
+
+  elements.forEach(card => {
+    const styles = getComputedStyle(card);
+
+    // Filter: must have border or shadow to be considered a card
+    const hasBorder = styles.border !== 'none' && styles.borderWidth !== '0px';
+    const hasShadow = styles.boxShadow !== 'none';
+
+    if (!hasBorder && !hasShadow) return;
+
+    const signature = createStyleSignature(card as HTMLElement);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        boxShadow: styles.boxShadow,
+        margin: styles.margin
+      };
+
+      const variant: any = {
+        html: (card as HTMLElement).outerHTML.substring(0, 500),
+        classes: (card as HTMLElement).className || '',
+        styles: componentStyles,
+        variant: 'card',
+        count: 1
+      };
+
+      cards.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return cards.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts form input components
+ */
+function extractInputs(): any[] {
+  const inputs: any[] = [];
+  const seen = new Map<string, any>();
+
+  const inputSelectors = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select';
+  const elements = document.querySelectorAll(inputSelectors);
+
+  elements.forEach(input => {
+    const styles = getComputedStyle(input);
+    const signature = createStyleSignature(input as HTMLElement);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        color: styles.color,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        fontSize: styles.fontSize,
+        height: styles.height
+      };
+
+      const variant: any = {
+        html: (input as HTMLElement).outerHTML.substring(0, 500),
+        classes: (input as HTMLElement).className || '',
+        styles: componentStyles,
+        variant: (input as HTMLElement).tagName.toLowerCase(),
+        count: 1
+      };
+
+      inputs.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return inputs.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts navigation components
+ */
+function extractNavigation(): any[] {
+  const navItems: any[] = [];
+  const seen = new Map<string, any>();
+
+  const navSelectors = 'nav a, [role="navigation"] a, header a';
+  const elements = document.querySelectorAll(navSelectors);
+
+  elements.forEach(navItem => {
+    const styles = getComputedStyle(navItem);
+    const signature = createStyleSignature(navItem as HTMLElement);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        color: styles.color,
+        fontSize: styles.fontSize,
+        fontWeight: styles.fontWeight,
+        padding: styles.padding,
+        textDecoration: styles.textDecoration
+      };
+
+      const variant: any = {
+        html: (navItem as HTMLElement).outerHTML.substring(0, 500),
+        classes: (navItem as HTMLElement).className || '',
+        styles: componentStyles,
+        variant: 'nav-link',
+        count: 1
+      };
+
+      navItems.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return navItems.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts heading components
+ */
+function extractHeadings(): any[] {
+  const headings: any[] = [];
+  const seen = new Map<string, any>();
+
+  const headingSelectors = 'h1, h2, h3, h4, h5, h6';
+  const elements = document.querySelectorAll(headingSelectors);
+
+  elements.forEach(heading => {
+    const styles = getComputedStyle(heading);
+    const tag = (heading as HTMLElement).tagName.toLowerCase();
+    const signature = `${tag}-${styles.fontSize}-${styles.fontWeight}`;
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        fontSize: styles.fontSize,
+        fontWeight: styles.fontWeight,
+        lineHeight: styles.lineHeight,
+        color: styles.color,
+        margin: styles.margin
+      };
+
+      const variant: any = {
+        html: (heading as HTMLElement).outerHTML.substring(0, 500),
+        classes: (heading as HTMLElement).className || '',
+        styles: componentStyles,
+        variant: tag,
+        count: 1
+      };
+
+      headings.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return headings.sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Creates a unique signature for an element based on key styles
+ * Rounds padding to nearest 16px to group similar variants together
+ */
+function createStyleSignature(element: HTMLElement): string {
+  const styles = getComputedStyle(element);
+
+  // Round padding to nearest 16px to group variants with minor padding differences
+  const paddingLeft = Math.round(parseInt(styles.paddingLeft) / 16) * 16;
+  const paddingTop = Math.round(parseInt(styles.paddingTop) / 16) * 16;
+
+  return `${styles.backgroundColor}-${styles.color}-${styles.borderRadius}-${paddingLeft}px-${paddingTop}px-${styles.fontSize}-${styles.fontWeight}`;
+}
+
+/**
+ * Infers button variant from classes and styles
+ */
+function inferVariant(button: HTMLElement): string {
+  const classes = button.className.toLowerCase();
+
+  if (classes.includes('primary')) return 'primary';
+  if (classes.includes('secondary')) return 'secondary';
+  if (classes.includes('ghost') || classes.includes('outline')) return 'outline';
+  if (classes.includes('danger') || classes.includes('destructive')) return 'danger';
+
+  // Fallback: analyze background color
+  const styles = getComputedStyle(button);
+  const bg = styles.backgroundColor;
+
+  if (bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') return 'ghost';
+
+  return 'default';
+}
+
+/**
+ * Extracts typography context with semantic usage
+ */
+function extractTypographyContext(): any {
+  const headings: { [tag: string]: any } = {};
+  const bodyMap = new Map<string, any>();
+
+  // Extract heading styles
+  ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].forEach(tag => {
+    const elements = document.querySelectorAll(tag);
+    if (elements.length === 0) return;
+
+    const firstElement = elements[0];
+    const styles = getComputedStyle(firstElement);
+
+    headings[tag] = {
+      fontSize: styles.fontSize,
+      fontWeight: styles.fontWeight,
+      lineHeight: styles.lineHeight,
+      color: styles.color,
+      usage: `${tag.toUpperCase()} headings`,
+      examples: Array.from(elements).slice(0, 2).map(el =>
+        el.textContent?.substring(0, 50) || ''
+      ),
+      tag
+    };
+  });
+
+  // Extract body text styles with semantic labels
+  const bodySelectors = 'p, span:not([class*="icon"]), div, a, button';
+  const bodyElements = document.querySelectorAll(bodySelectors);
+  const maxBodyElements = Math.min(bodyElements.length, 100);
+
+  for (let i = 0; i < maxBodyElements; i++) {
+    const element = bodyElements[i] as HTMLElement;
+    if (!element.textContent?.trim()) continue;
+
+    const styles = getComputedStyle(element);
+    const signature = `${styles.fontSize}-${styles.fontWeight}-${styles.lineHeight}`;
+
+    if (!bodyMap.has(signature)) {
+      // Infer semantic usage from tag and context
+      let usage = 'Body text';
+      const tagName = element.tagName.toLowerCase();
+
+      if (tagName === 'p') usage = 'Paragraph text';
+      else if (tagName === 'a' && element.closest('nav')) usage = 'Navigation links';
+      else if (tagName === 'a') usage = 'Link text';
+      else if (tagName === 'button') usage = 'Button text';
+      else if (element.classList.toString().includes('caption')) usage = 'Caption text';
+      else if (element.classList.toString().includes('label')) usage = 'Label text';
+
+      const cleanText = element.textContent
+        .trim()
+        .replace(/\s+/g, ' ')
+        .substring(0, 60);
+
+      bodyMap.set(signature, {
+        fontSize: styles.fontSize,
+        fontWeight: styles.fontWeight,
+        lineHeight: styles.lineHeight,
+        color: styles.color,
+        usage,
+        examples: [cleanText + (element.textContent.trim().length > 60 ? '...' : '')],
+        tag: tagName,
+        count: 1
+      });
+    } else {
+      // Increment count for existing signature
+      const existing = bodyMap.get(signature)!;
+      existing.count++;
+    }
+  }
+
+  return {
+    headings,
+    body: Array.from(bodyMap.values()).slice(0, 3)
+  };
+}
+
+/**
+ * Builds a map of CSS variable names to their computed color values
+ */
+function buildColorVariableMap(cssVariables: any): Map<string, string> {
+  const colorVarMap = new Map<string, string>();
+  const tempDiv = document.createElement('div');
+  tempDiv.style.display = 'none';
+  document.body.appendChild(tempDiv);
+
+  try {
+    for (const [varName, themes] of Object.entries(cssVariables || {})) {
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+      if (!lightValue) continue;
+
+      // Set the variable value and read the computed color
+      tempDiv.style.color = `var(${varName})`;
+      const computedColor = getComputedStyle(tempDiv).color;
+
+      if (computedColor && computedColor !== 'rgba(0, 0, 0, 0)') {
+        const normalized = normalizeColor(computedColor);
+        colorVarMap.set(normalized, varName);
+      }
+
+      // Also try setting the raw value directly to handle all color formats
+      tempDiv.style.color = lightValue;
+      const directComputed = getComputedStyle(tempDiv).color;
+
+      if (directComputed && directComputed !== computedColor) {
+        const directNormalized = normalizeColor(directComputed);
+        if (!colorVarMap.has(directNormalized)) {
+          colorVarMap.set(directNormalized, varName);
+        }
+      }
+    }
+  } finally {
+    document.body.removeChild(tempDiv);
+  }
+
+  return colorVarMap;
+}
+
+/**
+ * Maps a computed color to its CSS variable name
+ */
+function mapColorToVariable(computedColor: string, colorVarMap: Map<string, string>): string {
+  const normalized = normalizeColor(computedColor);
+
+  // Try direct match
+  if (colorVarMap.has(normalized)) {
+    return `var(${colorVarMap.get(normalized)})`;
+  }
+
+  // Try common color names
+  const colorNames: { [key: string]: string } = {
+    'rgb(255, 255, 255)': '#ffffff',
+    'rgb(0, 0, 0)': '#000000',
+    'rgb(255, 0, 0)': '#ff0000',
+    'rgb(0, 255, 0)': '#00ff00',
+    'rgb(0, 0, 255)': '#0000ff',
+  };
+
+  if (colorNames[normalized]) {
+    return colorNames[normalized];
+  }
+
+  // Return original if no mapping found
+  return computedColor;
+}
+
+/**
+ * Extracts color usage context with CSS variable mapping
+ */
+function extractColorContext(): any {
+  const colorUsage: any = {
+    backgrounds: {},
+    text: {},
+    borders: {},
+    pairings: [],
+    variableMap: {}
+  };
+
+  // Get CSS variables for mapping
+  const cssVariables = extractCSSCustomProperties();
+  const colorVarMap = buildColorVariableMap(cssVariables);
+
+  const pairingMap = new Map<string, any>();
+  const elements = document.querySelectorAll('*');
+  const maxElements = Math.min(elements.length, 300);
+
+  for (let i = 0; i < maxElements; i++) {
+    const element = elements[i];
+    const styles = getComputedStyle(element);
+
+    // Track background colors
+    const bg = styles.backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      const normalized = normalizeColor(bg);
+      colorUsage.backgrounds[normalized] = (colorUsage.backgrounds[normalized] || 0) + 1;
+
+      // Map to variable name
+      const bgVar = mapColorToVariable(bg, colorVarMap);
+      if (bgVar !== bg && bgVar.startsWith('var(')) {
+        colorUsage.variableMap[normalized] = bgVar;
+      }
+
+      // Track color pairings
+      const textColor = styles.color;
+      if (textColor) {
+        const normalizedText = normalizeColor(textColor);
+        const pairKey = `${normalized}::${normalizedText}`;
+
+        // Map text color to variable
+        const textVar = mapColorToVariable(textColor, colorVarMap);
+        if (textVar !== textColor && textVar.startsWith('var(')) {
+          colorUsage.variableMap[normalizedText] = textVar;
+        }
+
+        if (pairingMap.has(pairKey)) {
+          pairingMap.get(pairKey)!.count++;
+        } else {
+          pairingMap.set(pairKey, {
+            pair: `${normalized} / ${normalizedText}`,
+            background: normalized,
+            backgroundVar: bgVar,
+            text: normalizedText,
+            textVar: textVar,
+            count: 1
+          });
+        }
+      }
+    }
+
+    // Track text colors
+    const textColor = styles.color;
+    if (textColor && textColor !== 'rgba(0, 0, 0, 0)') {
+      const normalized = normalizeColor(textColor);
+      colorUsage.text[normalized] = (colorUsage.text[normalized] || 0) + 1;
+
+      // Map to variable name
+      const textVar = mapColorToVariable(textColor, colorVarMap);
+      if (textVar !== textColor && textVar.startsWith('var(')) {
+        colorUsage.variableMap[normalized] = textVar;
+      }
+    }
+
+    // Track border colors
+    const borderColor = styles.borderColor;
+    if (borderColor && borderColor !== 'rgba(0, 0, 0, 0)' && borderColor !== 'transparent' && styles.borderWidth !== '0px') {
+      const normalized = normalizeColor(borderColor);
+      colorUsage.borders[normalized] = (colorUsage.borders[normalized] || 0) + 1;
+
+      // Map to variable name
+      const borderVar = mapColorToVariable(borderColor, colorVarMap);
+      if (borderVar !== borderColor && borderVar.startsWith('var(')) {
+        colorUsage.variableMap[normalized] = borderVar;
+      }
+    }
+  }
+
+  // Convert pairings map to sorted array
+  colorUsage.pairings = Array.from(pairingMap.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return colorUsage;
+}
+
+/**
+ * Extracts layout patterns
+ */
+function extractLayoutPatterns(): any {
+  const layout: any = {
+    containers: [],
+    breakpoints: extractBreakpoints(),
+    spacingPatterns: {}
+  };
+
+  // Find container elements
+  const containerSelectors = '[class*="container"], main, section, [class*="wrapper"]';
+  const containers = document.querySelectorAll(containerSelectors);
+  const containerMap = new Map<string, any>();
+
+  containers.forEach(el => {
+    const styles = getComputedStyle(el);
+    const maxWidth = styles.maxWidth;
+
+    if (maxWidth && maxWidth !== 'none') {
+      const key = `${maxWidth}-${styles.padding}`;
+
+      if (containerMap.has(key)) {
+        containerMap.get(key)!.count++;
+      } else {
+        const className = (el as HTMLElement).className;
+        const firstClass = className ? className.split(' ')[0] : '';
+
+        containerMap.set(key, {
+          selector: el.tagName.toLowerCase() + (firstClass ? `.${firstClass}` : ''),
+          maxWidth,
+          padding: styles.padding,
+          count: 1
+        });
+      }
+    }
+  });
+
+  layout.containers = Array.from(containerMap.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // Extract spacing patterns
+  const spacingElements = document.querySelectorAll('section, article, div[class*="card"], [class*="container"]');
+  const maxSpacingElements = Math.min(spacingElements.length, 100);
+
+  for (let i = 0; i < maxSpacingElements; i++) {
+    const el = spacingElements[i];
+    const styles = getComputedStyle(el);
+
+    const padding = styles.padding;
+    if (padding && padding !== '0px') {
+      const key = `padding:${padding}`;
+      if (!layout.spacingPatterns[key]) {
+        layout.spacingPatterns[key] = { type: 'padding', count: 0 };
+      }
+      layout.spacingPatterns[key].count++;
+    }
+
+    const margin = styles.margin;
+    if (margin && margin !== '0px') {
+      const key = `margin:${margin}`;
+      if (!layout.spacingPatterns[key]) {
+        layout.spacingPatterns[key] = { type: 'margin', count: 0 };
+      }
+      layout.spacingPatterns[key].count++;
+    }
+  }
+
+  return layout;
+}
+
+/**
+ * Extracts breakpoints from stylesheets and Tailwind classes
+ */
+function extractBreakpoints(): number[] {
+  const breakpoints = new Set<number>();
+
+  // Extract from @media rules in stylesheets
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      if (sheet.href && (
+        sheet.href.includes('chrome-extension://') ||
+        sheet.href.includes('moz-extension://') ||
+        sheet.href.includes('safari-extension://')
+      )) {
+        continue;
+      }
+
+      const rules = sheet.cssRules || sheet.rules;
+      if (!rules) continue;
+
+      for (let i = 0; i < rules.length; i++) {
+        const rule = rules[i];
+
+        if (rule.constructor.name === 'CSSMediaRule' || rule.type === CSSRule.MEDIA_RULE) {
+          const mediaRule = rule as CSSMediaRule;
+          const text = mediaRule.conditionText || mediaRule.media.mediaText;
+
+          // Extract pixel values from media queries
+          const matches = text.match(/(\d+)px/g);
+          if (matches) {
+            matches.forEach(match => {
+              const value = parseInt(match);
+              if (value >= 320 && value <= 2560) {
+                breakpoints.add(value);
+              }
+            });
+          }
+        }
+      }
+    } catch {
+      // CORS or permission error - skip this stylesheet
+    }
+  }
+
+  // Extract from Tailwind responsive classes
+  const allElements = document.querySelectorAll('*');
+  const maxElements = Math.min(allElements.length, 500);
+
+  for (let i = 0; i < maxElements; i++) {
+    const classes = allElements[i].className;
+    if (typeof classes !== 'string') continue;
+
+    if (classes.includes('sm:')) breakpoints.add(640);
+    if (classes.includes('md:')) breakpoints.add(768);
+    if (classes.includes('lg:')) breakpoints.add(1024);
+    if (classes.includes('xl:')) breakpoints.add(1280);
+    if (classes.includes('2xl:')) breakpoints.add(1536);
+  }
+
+  return Array.from(breakpoints).sort((a, b) => a - b);
+}

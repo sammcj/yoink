@@ -16,12 +16,8 @@ interface AnalyticsRequest {
 }
 
 // Listen for extension installation or updates
-chrome.runtime.onInstalled.addListener((details: InstallDetails) => {
-  if (details.reason === 'install') {
-    console.log('🎨 Yoink extension installed successfully!');
-  } else if (details.reason === 'update') {
-    console.log(`🎨 Yoink extension updated from version ${details.previousVersion}`);
-  }
+chrome.runtime.onInstalled.addListener((_details: InstallDetails) => {
+  // Extension installed or updated
 });
 
 // Listen for messages from popup or content scripts
@@ -30,10 +26,7 @@ chrome.runtime.onMessage.addListener((
   _sender: chrome.runtime.MessageSender,
   sendResponse: (response: { success: boolean }) => void
 ): boolean => {
-  console.log('Background received message:', request);
-
   if (request.action === 'logAnalytics') {
-    console.log('Analytics event:', request.data);
     sendResponse({ success: true });
   }
 
@@ -49,5 +42,3 @@ function updateBadge(text: string, color = '#6366f1'): void {
   chrome.action.setBadgeText({ text });
   chrome.action.setBadgeBackgroundColor({ color });
 }
-
-console.log('🎨 Yoink background service worker started');

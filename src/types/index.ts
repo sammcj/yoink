@@ -35,6 +35,10 @@ export interface StyleData {
   fonts: string[];
   borderRadius: string[];
   shadows: string[];
+  components?: ComponentPatterns;
+  typographyContext?: TypographyContext;
+  colorContext?: ColorContext;
+  layoutPatterns?: LayoutPatterns;
 }
 
 /**
@@ -72,4 +76,121 @@ export enum MessageType {
 export interface ExtensionMessage {
   type: MessageType;
   data?: StyleData;
+  includeComponents?: boolean;
+}
+
+/**
+ * Component patterns extracted from the page
+ */
+export interface ComponentPatterns {
+  buttons: ComponentVariant[];
+  cards: ComponentVariant[];
+  inputs: ComponentVariant[];
+  navigation: ComponentVariant[];
+  headings: ComponentVariant[];
+}
+
+/**
+ * A component variant with its styles and usage
+ */
+export interface ComponentVariant {
+  html: string;
+  classes: string;
+  styles: ComponentStyles;
+  variant: string;
+  count: number;
+  stateStyles?: {
+    hover?: Partial<ComponentStyles>;
+    focus?: Partial<ComponentStyles>;
+  };
+}
+
+/**
+ * Styles extracted from a component
+ */
+export interface ComponentStyles {
+  background?: string;
+  color?: string;
+  padding?: string;
+  borderRadius?: string;
+  fontSize?: string;
+  fontWeight?: string;
+  border?: string;
+  boxShadow?: string;
+  display?: string;
+  width?: string;
+  height?: string;
+  margin?: string;
+  [key: string]: string | undefined;
+}
+
+/**
+ * Typography context showing semantic usage
+ */
+export interface TypographyContext {
+  headings: {
+    [tag: string]: TypographyUsage;
+  };
+  body: TypographyUsage[];
+}
+
+/**
+ * Typography usage information
+ */
+export interface TypographyUsage {
+  fontSize: string;
+  fontWeight: string;
+  lineHeight: string;
+  color: string;
+  usage: string;
+  examples: string[];
+  tag?: string;
+}
+
+/**
+ * Color usage context and patterns
+ */
+export interface ColorContext {
+  backgrounds: { [color: string]: number };
+  text: { [color: string]: number };
+  borders: { [color: string]: number };
+  pairings: ColorPairing[];
+}
+
+/**
+ * Common color pairing (background + text)
+ */
+export interface ColorPairing {
+  pair: string;
+  background: string;
+  text: string;
+  count: number;
+  purpose?: string;
+}
+
+/**
+ * Layout patterns and constraints
+ */
+export interface LayoutPatterns {
+  containers: ContainerPattern[];
+  breakpoints: number[];
+  spacingPatterns: { [spacing: string]: SpacingPattern };
+}
+
+/**
+ * Container pattern information
+ */
+export interface ContainerPattern {
+  selector: string;
+  maxWidth: string;
+  padding: string;
+  count: number;
+}
+
+/**
+ * Spacing pattern usage
+ */
+export interface SpacingPattern {
+  type: 'padding' | 'margin';
+  count: number;
 }
