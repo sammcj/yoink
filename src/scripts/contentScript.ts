@@ -485,6 +485,40 @@ function extractStateStyles(element: HTMLElement): any {
 }
 
 /**
+ * Gets the actual font size from button text content
+ * Buttons often have base font on the wrapper, but larger font on the text inside
+ */
+function getButtonTextFontSize(button: HTMLElement): string {
+  // First try: find the first text-bearing child element
+  const textElements = button.querySelectorAll('div, span, a');
+  for (let i = 0; i < textElements.length; i++) {
+    const el = textElements[i] as HTMLElement;
+    const text = el.textContent?.trim() || '';
+
+    // Skip empty elements and icons
+    if (text.length > 0 && text.length < 100 && !el.className.includes('icon')) {
+      const styles = getComputedStyle(el);
+      const fontSize = parseFloat(styles.fontSize);
+
+      // Return if we found a reasonable font size
+      if (fontSize >= 10 && fontSize <= 32) {
+        return `${fontSize}px`;
+      }
+    }
+  }
+
+  // Fallback: if button has direct text content, use button's font size
+  const buttonText = button.textContent?.trim() || '';
+  if (buttonText.length > 0) {
+    const buttonStyles = getComputedStyle(button);
+    return buttonStyles.fontSize;
+  }
+
+  // Last resort: return button's font size
+  return getComputedStyle(button).fontSize;
+}
+
+/**
  * Extracts button components with variants
  */
 function extractButtons(): any[] {
@@ -502,12 +536,15 @@ function extractButtons(): any[] {
       const existing = seen.get(signature)!;
       existing.count++;
     } else {
+      // Get font size from the actual text content, not the button wrapper
+      const textFontSize = getButtonTextFontSize(btn as HTMLElement);
+
       const componentStyles: any = {
         background: styles.backgroundColor,
         color: styles.color,
         padding: styles.padding,
         borderRadius: styles.borderRadius,
-        fontSize: styles.fontSize,
+        fontSize: textFontSize,
         fontWeight: styles.fontWeight,
         border: styles.border,
         boxShadow: styles.boxShadow,
@@ -789,15 +826,23 @@ function extractTypographyContext(): any {
     // Skip if no meaningful text
     if (text.length < 3 || text.length > 200) continue;
 
-    // Filter out container elements: skip if has many children but little direct text
+    // Filter out container elements more aggressively
     const directText = Array.from(element.childNodes)
       .filter(node => node.nodeType === Node.TEXT_NODE)
       .map(node => node.textContent?.trim() || '')
       .join(' ')
       .trim();
 
-    // Skip if it's mainly a container (has >2 children and little direct text)
-    if (element.children.length > 2 && directText.length < 10) continue;
+    // Skip if it's mainly a container
+    if (element.children.length > 1 && directText.length < 15) continue;
+
+    // Skip if it contains structural elements (containers with nested divs/sections)
+    const hasStructuralChildren = element.querySelector('div, section, article') !== null;
+    if (hasStructuralChildren && element.children.length > 0) continue;
+
+    // Skip button and link elements - they're extracted separately in component patterns
+    const tagName = element.tagName.toLowerCase();
+    if (tagName === 'button' || (tagName === 'a' && element.getAttribute('role') === 'button')) continue;
 
     const styles = getComputedStyle(element);
     const actualFontSize = parseFloat(styles.fontSize);
@@ -807,10 +852,11 @@ function extractTypographyContext(): any {
     const signature = `${actualFontSize}px-${weight}-${styles.lineHeight}`;
 
     // Detect if this should be a heading based on size and weight
+    // Be conservative: only large + bold text, or very large text
+    // Don't classify navigation text as headings - it's body text
     const isLargeAndBold = actualFontSize >= 16 && weight >= 600;
     const isVeryLarge = actualFontSize >= 20;
-    const isNavigationHeading = element.closest('nav') !== null && actualFontSize >= 14 && weight >= 500;
-    const isHeading = isLargeAndBold || isVeryLarge || (actualFontSize >= 18 && weight >= 700) || isNavigationHeading;
+    const isHeading = isLargeAndBold || isVeryLarge || (actualFontSize >= 18 && weight >= 700);
 
     if (isHeading) {
       // This looks like a heading - add to inferred headings
