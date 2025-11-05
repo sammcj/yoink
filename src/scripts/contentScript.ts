@@ -752,17 +752,19 @@ function inferVariant(button: HTMLElement): string {
 function extractTypographyContext(): any {
   const headings: { [tag: string]: any } = {};
   const bodyMap = new Map<string, any>();
+  const inferredHeadingsMap = new Map<string, any>();
 
-  // Extract heading styles
+  // Extract semantic heading styles (h1-h6 tags)
   ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].forEach(tag => {
     const elements = document.querySelectorAll(tag);
     if (elements.length === 0) return;
 
-    const firstElement = elements[0];
+    const firstElement = elements[0] as HTMLElement;
     const styles = getComputedStyle(firstElement);
+    const actualFontSize = parseFloat(styles.fontSize);
 
     headings[tag] = {
-      fontSize: styles.fontSize,
+      fontSize: `${actualFontSize}px`,
       fontWeight: styles.fontWeight,
       lineHeight: styles.lineHeight,
       color: styles.color,
@@ -774,56 +776,120 @@ function extractTypographyContext(): any {
     };
   });
 
-  // Extract body text styles with semantic labels
-  const bodySelectors = 'p, span:not([class*="icon"]), div, a, button';
+  // Extract text styles from actual content-bearing elements
+  // Use more specific selectors and filter out containers
+  const bodySelectors = 'p, span:not([class*="icon"]), div, a, button, label, li';
   const bodyElements = document.querySelectorAll(bodySelectors);
-  const maxBodyElements = Math.min(bodyElements.length, 100);
+  const maxBodyElements = Math.min(bodyElements.length, 200); // Increased to get better coverage
 
   for (let i = 0; i < maxBodyElements; i++) {
     const element = bodyElements[i] as HTMLElement;
-    if (!element.textContent?.trim()) continue;
+    const text = element.textContent?.trim() || '';
+
+    // Skip if no meaningful text
+    if (text.length < 3 || text.length > 200) continue;
+
+    // Filter out container elements: skip if has many children but little direct text
+    const directText = Array.from(element.childNodes)
+      .filter(node => node.nodeType === Node.TEXT_NODE)
+      .map(node => node.textContent?.trim() || '')
+      .join(' ')
+      .trim();
+
+    // Skip if it's mainly a container (has >2 children and little direct text)
+    if (element.children.length > 2 && directText.length < 10) continue;
 
     const styles = getComputedStyle(element);
-    const signature = `${styles.fontSize}-${styles.fontWeight}-${styles.lineHeight}`;
+    const actualFontSize = parseFloat(styles.fontSize);
+    const weight = parseInt(styles.fontWeight);
 
-    if (!bodyMap.has(signature)) {
-      // Infer semantic usage from tag and context
-      let usage = 'Body text';
-      const tagName = element.tagName.toLowerCase();
+    // Use actual font size in signature
+    const signature = `${actualFontSize}px-${weight}-${styles.lineHeight}`;
 
-      if (tagName === 'p') usage = 'Paragraph text';
-      else if (tagName === 'a' && element.closest('nav')) usage = 'Navigation links';
-      else if (tagName === 'a') usage = 'Link text';
-      else if (tagName === 'button') usage = 'Button text';
-      else if (element.classList.toString().includes('caption')) usage = 'Caption text';
-      else if (element.classList.toString().includes('label')) usage = 'Label text';
+    // Detect if this should be a heading based on size and weight
+    const isLargeAndBold = actualFontSize >= 16 && weight >= 600;
+    const isVeryLarge = actualFontSize >= 20;
+    const isNavigationHeading = element.closest('nav') !== null && actualFontSize >= 14 && weight >= 500;
+    const isHeading = isLargeAndBold || isVeryLarge || (actualFontSize >= 18 && weight >= 700) || isNavigationHeading;
 
-      const cleanText = element.textContent
-        .trim()
-        .replace(/\s+/g, ' ')
-        .substring(0, 60);
+    if (isHeading) {
+      // This looks like a heading - add to inferred headings
+      const headingLevel = inferHeadingLevelFromSize(actualFontSize);
+      const headingKey = `${headingLevel} (inferred)`;
 
-      bodyMap.set(signature, {
-        fontSize: styles.fontSize,
-        fontWeight: styles.fontWeight,
-        lineHeight: styles.lineHeight,
-        color: styles.color,
-        usage,
-        examples: [cleanText + (element.textContent.trim().length > 60 ? '...' : '')],
-        tag: tagName,
-        count: 1
-      });
+      if (!inferredHeadingsMap.has(headingKey)) {
+        const cleanText = text.replace(/\s+/g, ' ').substring(0, 50);
+
+        inferredHeadingsMap.set(headingKey, {
+          fontSize: `${actualFontSize}px`,
+          fontWeight: styles.fontWeight,
+          lineHeight: styles.lineHeight,
+          color: styles.color,
+          usage: `${headingLevel} headings (inferred from ${actualFontSize}px text)`,
+          examples: [cleanText + (text.length > 50 ? '...' : '')],
+          tag: headingLevel
+        });
+      }
     } else {
-      // Increment count for existing signature
-      const existing = bodyMap.get(signature)!;
-      existing.count++;
+      // This is body text
+      if (!bodyMap.has(signature)) {
+        // Infer semantic usage from tag and context
+        let usage = 'Body text';
+        const tagName = element.tagName.toLowerCase();
+
+        if (tagName === 'p') usage = 'Paragraph text';
+        else if (tagName === 'a' && element.closest('nav')) usage = 'Navigation links';
+        else if (tagName === 'a') usage = 'Link text';
+        else if (tagName === 'button') usage = 'Button text';
+        else if (tagName === 'label') usage = 'Label text';
+        else if (element.classList.toString().includes('caption')) usage = 'Caption text';
+
+        const cleanText = text.replace(/\s+/g, ' ').substring(0, 60);
+
+        bodyMap.set(signature, {
+          fontSize: `${actualFontSize}px`,
+          fontWeight: styles.fontWeight,
+          lineHeight: styles.lineHeight,
+          color: styles.color,
+          usage,
+          examples: [cleanText + (text.length > 60 ? '...' : '')],
+          tag: tagName,
+          count: 1
+        });
+      } else {
+        // Increment count for existing signature
+        const existing = bodyMap.get(signature)!;
+        existing.count++;
+      }
     }
   }
 
+  // Merge inferred headings into the headings object
+  for (const [key, heading] of inferredHeadingsMap.entries()) {
+    headings[key] = heading;
+  }
+
+  // Sort body text by count (most common first)
+  const sortedBody = Array.from(bodyMap.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5); // Show top 5 instead of 3
+
   return {
     headings,
-    body: Array.from(bodyMap.values()).slice(0, 3)
+    body: sortedBody
   };
+}
+
+/**
+ * Infer heading level from font size (for inferred headings)
+ */
+function inferHeadingLevelFromSize(fontSize: number): string {
+  if (fontSize >= 32) return 'h1';
+  if (fontSize >= 24) return 'h2';
+  if (fontSize >= 20) return 'h3';
+  if (fontSize >= 18) return 'h4';
+  if (fontSize >= 16) return 'h5';
+  return 'h6';
 }
 
 /**
