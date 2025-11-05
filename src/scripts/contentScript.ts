@@ -485,6 +485,120 @@ function extractStateStyles(element: HTMLElement): any {
 }
 
 /**
+ * Converts a color string (rgb, rgba, hex) to RGB components
+ */
+function parseColorToRGB(color: string): { r: number; g: number; b: number } | null {
+  // Handle rgb/rgba
+  const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbaMatch) {
+    return {
+      r: parseInt(rgbaMatch[1]),
+      g: parseInt(rgbaMatch[2]),
+      b: parseInt(rgbaMatch[3])
+    };
+  }
+
+  // Handle hex colors
+  if (color.startsWith('#')) {
+    const hex = color.substring(1);
+    if (hex.length === 3) {
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16)
+      };
+    } else if (hex.length === 6) {
+      return {
+        r: parseInt(hex.substring(0, 2), 16),
+        g: parseInt(hex.substring(2, 4), 16),
+        b: parseInt(hex.substring(4, 6), 16)
+      };
+    }
+  }
+
+  // Handle transparent
+  if (color === 'transparent' || color === 'rgba(0, 0, 0, 0)') {
+    return { r: 0, g: 0, b: 0 };
+  }
+
+  return null;
+}
+
+/**
+ * Calculates color distance using Euclidean distance in RGB space
+ * Returns a value between 0 (identical) and 1 (very different)
+ * Normalized by dividing by maximum possible distance (441.67)
+ */
+function calculateColorDistance(color1: string, color2: string): number {
+  const rgb1 = parseColorToRGB(color1);
+  const rgb2 = parseColorToRGB(color2);
+
+  if (!rgb1 || !rgb2) {
+    // If we can't parse, consider them different
+    return color1 === color2 ? 0 : 1;
+  }
+
+  // Calculate Euclidean distance in RGB space
+  const rDiff = rgb1.r - rgb2.r;
+  const gDiff = rgb1.g - rgb2.g;
+  const bDiff = rgb1.b - rgb2.b;
+
+  const distance = Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff);
+
+  // Normalize to 0-1 (max distance is sqrt(255^2 + 255^2 + 255^2) ≈ 441.67)
+  return distance / 441.67;
+}
+
+/**
+ * Checks if two buttons are visually similar enough to be merged
+ * Uses weighted scoring for colors (most important) and structure (less important)
+ */
+function areButtonsSimilar(btn1: any, btn2: any): boolean {
+  const styles1 = btn1.styles;
+  const styles2 = btn2.styles;
+
+  // 1. Compare background colors (most important indicator)
+  const bgDistance = calculateColorDistance(styles1.background || 'transparent', styles2.background || 'transparent');
+  if (bgDistance > 0.08) return false; // Colors must be very similar (threshold ~20 RGB units)
+
+  // 2. Compare text colors (also important)
+  const textDistance = calculateColorDistance(styles1.color || 'rgb(0,0,0)', styles2.color || 'rgb(0,0,0)');
+  if (textDistance > 0.08) return false;
+
+  // 3. Compare border-radius (should be similar)
+  const radius1 = parseFloat(styles1.borderRadius) || 0;
+  const radius2 = parseFloat(styles2.borderRadius) || 0;
+  if (Math.abs(radius1 - radius2) > 4) return false; // Allow 4px difference
+
+  // 4. Compare padding (should be reasonably similar)
+  const padding1 = parsePaddingValue(styles1.padding || '0px');
+  const padding2 = parsePaddingValue(styles2.padding || '0px');
+  const paddingDiff = Math.abs(padding1 - padding2);
+  if (paddingDiff > 8) return false; // Allow 8px difference
+
+  // 5. Compare font size (should be similar)
+  const fontSize1 = parseFloat(styles1.fontSize) || 14;
+  const fontSize2 = parseFloat(styles2.fontSize) || 14;
+  if (Math.abs(fontSize1 - fontSize2) > 2) return false; // Allow 2px difference
+
+  // 6. Compare variant type (should match)
+  if (btn1.variant !== btn2.variant) return false;
+
+  // All checks passed - these buttons are similar!
+  return true;
+}
+
+/**
+ * Extracts the main padding value from padding string
+ * Handles formats like "8px", "8px 16px", "8px 16px 8px 16px"
+ */
+function parsePaddingValue(padding: string): number {
+  const parts = padding.split(' ');
+  const firstValue = parseFloat(parts[0]) || 0;
+  return firstValue;
+}
+
+/**
  * Gets the actual font size from button text content
  * Buttons often have base font on the wrapper, but larger font on the text inside
  */
@@ -519,50 +633,55 @@ function getButtonTextFontSize(button: HTMLElement): string {
 }
 
 /**
- * Extracts button components with variants
+ * Extracts button components with variants using visual similarity merging
  */
 function extractButtons(): any[] {
   const buttons: any[] = [];
-  const seen = new Map<string, any>();
 
   const buttonSelectors = 'button, [role="button"], a[class*="btn"], a[class*="button"], input[type="submit"], input[type="button"]';
   const elements = document.querySelectorAll(buttonSelectors);
 
   elements.forEach(btn => {
     const styles = getComputedStyle(btn);
-    const signature = createStyleSignature(btn as HTMLElement);
 
-    if (seen.has(signature)) {
-      const existing = seen.get(signature)!;
-      existing.count++;
-    } else {
-      // Get font size from the actual text content, not the button wrapper
-      const textFontSize = getButtonTextFontSize(btn as HTMLElement);
+    // Get font size from the actual text content, not the button wrapper
+    const textFontSize = getButtonTextFontSize(btn as HTMLElement);
 
-      const componentStyles: any = {
-        background: styles.backgroundColor,
-        color: styles.color,
-        padding: styles.padding,
-        borderRadius: styles.borderRadius,
-        fontSize: textFontSize,
-        fontWeight: styles.fontWeight,
-        border: styles.border,
-        boxShadow: styles.boxShadow,
-        display: styles.display,
-        height: styles.height
-      };
+    const componentStyles: any = {
+      background: styles.backgroundColor,
+      color: styles.color,
+      padding: styles.padding,
+      borderRadius: styles.borderRadius,
+      fontSize: textFontSize,
+      fontWeight: styles.fontWeight,
+      border: styles.border,
+      boxShadow: styles.boxShadow,
+      display: styles.display,
+      height: styles.height
+    };
 
-      const variant: any = {
-        html: getCleanHTML(btn as HTMLElement),
-        classes: (btn as HTMLElement).className || '',
-        styles: componentStyles,
-        variant: inferVariant(btn as HTMLElement),
-        count: 1,
-        stateStyles: extractStateStyles(btn as HTMLElement)
-      };
+    const newButton: any = {
+      html: getCleanHTML(btn as HTMLElement),
+      classes: (btn as HTMLElement).className || '',
+      styles: componentStyles,
+      variant: inferVariant(btn as HTMLElement),
+      count: 1,
+      stateStyles: extractStateStyles(btn as HTMLElement)
+    };
 
-      buttons.push(variant);
-      seen.set(signature, variant);
+    // Check if this button is similar to any existing button
+    let foundSimilar = false;
+    for (const existingButton of buttons) {
+      if (areButtonsSimilar(newButton, existingButton)) {
+        existingButton.count++;
+        foundSimilar = true;
+        break;
+      }
+    }
+
+    // If no similar button found, add this as a new variant
+    if (!foundSimilar) {
+      buttons.push(newButton);
     }
   });
 
@@ -764,23 +883,109 @@ function createStyleSignature(element: HTMLElement): string {
 }
 
 /**
- * Infers button variant from classes and styles
+ * Infers button variant from classes and styles with improved heuristics
  */
 function inferVariant(button: HTMLElement): string {
   const classes = button.className.toLowerCase();
+  const styles = getComputedStyle(button);
+  const text = button.textContent?.toLowerCase() || '';
 
+  // Priority 1: Check explicit variant classes
   if (classes.includes('primary')) return 'primary';
   if (classes.includes('secondary')) return 'secondary';
+  if (classes.includes('tertiary')) return 'tertiary';
   if (classes.includes('ghost') || classes.includes('outline')) return 'outline';
-  if (classes.includes('danger') || classes.includes('destructive')) return 'danger';
 
-  // Fallback: analyze background color
-  const styles = getComputedStyle(button);
+  // Semantic variants
+  if (classes.includes('danger') || classes.includes('destructive') || classes.includes('error')) return 'danger';
+  if (classes.includes('success')) return 'success';
+  if (classes.includes('warning') || classes.includes('caution')) return 'warning';
+  if (classes.includes('info')) return 'info';
+
+  // Link-style buttons
+  if (classes.includes('link') || classes.includes('text-button')) return 'link';
+
+  // Size variants (track separately from style variants)
+  const sizeVariant = inferSizeVariant(button, styles);
+
+  // Priority 2: Analyze visual characteristics
   const bg = styles.backgroundColor;
+  const border = styles.border;
+  const borderWidth = parseFloat(styles.borderWidth) || 0;
+  const textDecoration = styles.textDecoration;
 
-  if (bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') return 'ghost';
+  // Ghost/outline variants (transparent/minimal background)
+  const isTransparent = bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent';
+  if (isTransparent) {
+    if (borderWidth > 0 && border !== 'none') {
+      return sizeVariant ? `outline-${sizeVariant}` : 'outline';
+    }
+    if (textDecoration.includes('underline')) {
+      return 'link';
+    }
+    return 'ghost';
+  }
 
-  return 'default';
+  // Priority 3: Analyze background color brightness/saturation for variant type
+  const rgb = parseColorToRGB(bg);
+  if (rgb) {
+    const brightness = (rgb.r + rgb.g + rgb.b) / 3;
+    const isReddish = rgb.r > rgb.g + 30 && rgb.r > rgb.b + 30;
+    const isGreenish = rgb.g > rgb.r + 30 && rgb.g > rgb.b + 30;
+    const isYellowish = rgb.r > 180 && rgb.g > 180 && rgb.b < 100;
+    const isBlueish = rgb.b > rgb.r + 30 && rgb.b > rgb.g + 30;
+
+    // Detect semantic colors
+    if (isReddish && rgb.r > 180) return sizeVariant ? `danger-${sizeVariant}` : 'danger';
+    if (isGreenish && rgb.g > 180) return sizeVariant ? `success-${sizeVariant}` : 'success';
+    if (isYellowish) return sizeVariant ? `warning-${sizeVariant}` : 'warning';
+    if (isBlueish && rgb.b > 180) return sizeVariant ? `info-${sizeVariant}` : 'info';
+
+    // High saturation and brightness = primary
+    const saturation = Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b);
+    if (saturation > 50 && brightness > 100) {
+      return sizeVariant ? `primary-${sizeVariant}` : 'primary';
+    }
+
+    // Low saturation = secondary/muted
+    if (saturation < 30 || brightness < 100) {
+      return sizeVariant ? `secondary-${sizeVariant}` : 'secondary';
+    }
+  }
+
+  // Priority 4: Check text content for hints
+  if (text.includes('delete') || text.includes('remove') || text.includes('cancel')) {
+    return 'danger';
+  }
+  if (text.includes('confirm') || text.includes('submit') || text.includes('save')) {
+    return 'primary';
+  }
+
+  return sizeVariant ? `default-${sizeVariant}` : 'default';
+}
+
+/**
+ * Infers button size variant from padding and font size
+ */
+function inferSizeVariant(_button: HTMLElement, styles: CSSStyleDeclaration): string | null {
+  const paddingTop = parseFloat(styles.paddingTop) || 0;
+  const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+  const fontSize = parseFloat(styles.fontSize) || 14;
+
+  // Calculate average padding
+  const avgPadding = (paddingTop + paddingLeft) / 2;
+
+  // Size classification
+  if (avgPadding <= 6 || fontSize <= 12) {
+    return 'small';
+  } else if (avgPadding >= 16 || fontSize >= 18) {
+    return 'large';
+  } else if (avgPadding >= 12 && avgPadding < 16) {
+    return 'medium';
+  }
+
+  // Default medium range - don't add suffix
+  return null;
 }
 
 /**
@@ -1106,12 +1311,256 @@ function extractColorContext(): any {
 }
 
 /**
+ * Extracts comprehensive spacing scale from the page
+ * Identifies common spacing values, base unit, and usage patterns
+ */
+function extractSpacingScale(): any {
+  const spacingValues = new Map<number, any>();
+  const elements = document.querySelectorAll('*');
+  const maxElements = Math.min(elements.length, 500);
+
+  // Collect all spacing values from elements
+  for (let i = 0; i < maxElements; i++) {
+    const el = elements[i] as HTMLElement;
+    const styles = getComputedStyle(el);
+    const tagName = el.tagName.toLowerCase();
+
+    // Skip script, style, and head elements
+    if (tagName === 'script' || tagName === 'style' || tagName === 'head') continue;
+
+    // Extract padding values
+    const paddingTop = parseFloat(styles.paddingTop) || 0;
+    const paddingRight = parseFloat(styles.paddingRight) || 0;
+    const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+    const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+
+    // Extract margin values
+    const marginTop = parseFloat(styles.marginTop) || 0;
+    const marginRight = parseFloat(styles.marginRight) || 0;
+    const marginBottom = parseFloat(styles.marginBottom) || 0;
+    const marginLeft = parseFloat(styles.marginLeft) || 0;
+
+    // Track all non-zero spacing values
+    const allValues = [
+      { value: paddingTop, type: 'padding', side: 'top' },
+      { value: paddingRight, type: 'padding', side: 'right' },
+      { value: paddingBottom, type: 'padding', side: 'bottom' },
+      { value: paddingLeft, type: 'padding', side: 'left' },
+      { value: marginTop, type: 'margin', side: 'top' },
+      { value: marginRight, type: 'margin', side: 'right' },
+      { value: marginBottom, type: 'margin', side: 'bottom' },
+      { value: marginLeft, type: 'margin', side: 'left' }
+    ];
+
+    for (const item of allValues) {
+      if (item.value > 0 && item.value < 1000) { // Filter out extreme values
+        const rounded = Math.round(item.value); // Round to nearest pixel
+
+        if (!spacingValues.has(rounded)) {
+          spacingValues.set(rounded, {
+            value: rounded,
+            count: 0,
+            usages: { padding: 0, margin: 0 },
+            contexts: new Set<string>()
+          });
+        }
+
+        const entry = spacingValues.get(rounded)!;
+        entry.count++;
+        entry.usages[item.type as 'padding' | 'margin']++;
+
+        // Track context (what type of element uses this spacing)
+        const context = inferSpacingContext(el, item.type);
+        entry.contexts.add(context);
+      }
+    }
+  }
+
+  // Convert to sorted array
+  const sortedSpacing = Array.from(spacingValues.values())
+    .sort((a, b) => b.count - a.count);
+
+  // Identify the base unit (GCD of common spacing values)
+  const topValues = sortedSpacing.slice(0, 10).map(s => s.value);
+  const baseUnit = findBaseUnit(topValues);
+
+  // Build spacing scale (values that are multiples of base unit or close to it)
+  const spacingScale = sortedSpacing
+    .filter(s => {
+      // Include if it's a multiple of base unit (within 2px tolerance)
+      const ratio = s.value / baseUnit;
+      const nearestMultiple = Math.round(ratio);
+      return Math.abs(s.value - (nearestMultiple * baseUnit)) <= 2;
+    })
+    .slice(0, 12) // Limit to top 12 scale values
+    .map(s => ({
+      value: `${s.value}px`,
+      count: s.count,
+      usage: categorizeSpacingUsage(s),
+      contexts: Array.from(s.contexts)
+    }));
+
+  // Analyze the scale pattern
+  const scalePattern = analyzeSpacingPattern(spacingScale.map(s => parseInt(s.value)));
+
+  return {
+    spacingScale,
+    baseUnit: `${baseUnit}px`,
+    pattern: scalePattern,
+    totalUniqueValues: spacingValues.size,
+    recommendation: generateSpacingRecommendation(spacingScale.length, baseUnit)
+  };
+}
+
+/**
+ * Infers the context where spacing is used
+ */
+function inferSpacingContext(element: HTMLElement, type: string): string {
+  const tagName = element.tagName.toLowerCase();
+  const className = element.className?.toString() || '';
+
+  // Component-level spacing
+  if (tagName === 'button' || className.includes('btn')) {
+    return type === 'padding' ? 'button-internal' : 'button-spacing';
+  }
+
+  if (className.includes('card') || className.includes('panel')) {
+    return type === 'padding' ? 'card-internal' : 'card-spacing';
+  }
+
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+    return type === 'padding' ? 'input-internal' : 'input-spacing';
+  }
+
+  // Layout spacing
+  if (tagName === 'section' || tagName === 'article') {
+    return type === 'padding' ? 'section-padding' : 'section-margin';
+  }
+
+  if (className.includes('container') || className.includes('wrapper')) {
+    return 'container-spacing';
+  }
+
+  // Typography spacing
+  if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'].includes(tagName)) {
+    return 'typography-spacing';
+  }
+
+  return 'general';
+}
+
+/**
+ * Categorizes spacing usage into readable categories
+ */
+function categorizeSpacingUsage(spacingEntry: any): string {
+  const { value } = spacingEntry;
+
+  // Determine primary usage
+  if (value <= 8) {
+    return 'Micro spacing (component internals)';
+  } else if (value <= 16) {
+    return 'Small spacing (component padding, tight layouts)';
+  } else if (value <= 32) {
+    return 'Medium spacing (component margins, content separation)';
+  } else if (value <= 64) {
+    return 'Large spacing (section padding, major separations)';
+  } else {
+    return 'Extra large spacing (page layout, hero sections)';
+  }
+}
+
+/**
+ * Finds the greatest common divisor (base unit) of spacing values
+ */
+function findBaseUnit(values: number[]): number {
+  if (values.length === 0) return 8; // Default fallback
+
+  // Filter out values that are too small or too large
+  const filtered = values.filter(v => v >= 4 && v <= 100);
+  if (filtered.length === 0) return 8;
+
+  // Calculate GCD of all values
+  const gcd = (a: number, b: number): number => {
+    return b === 0 ? a : gcd(b, a % b);
+  };
+
+  let result = filtered[0];
+  for (let i = 1; i < filtered.length; i++) {
+    result = gcd(result, filtered[i]);
+    if (result <= 1) break; // Stop if GCD becomes 1
+  }
+
+  // Common base units in design systems
+  const commonBaseUnits = [4, 8, 6, 12, 16];
+
+  // If calculated GCD is too small, find closest common base unit
+  if (result <= 2) {
+    // Find which base unit most values are divisible by
+    let bestBase = 8;
+    let bestScore = 0;
+
+    for (const base of commonBaseUnits) {
+      const score = filtered.filter(v => v % base === 0).length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestBase = base;
+      }
+    }
+
+    return bestBase;
+  }
+
+  // Return the calculated GCD if it's reasonable
+  return result >= 4 && result <= 16 ? result : 8;
+}
+
+/**
+ * Analyzes the pattern/ratio of spacing scale
+ */
+function analyzeSpacingPattern(values: number[]): string {
+  if (values.length < 2) return 'Insufficient data';
+
+  const ratios: number[] = [];
+  for (let i = 1; i < Math.min(values.length, 6); i++) {
+    const ratio = values[i] / values[i - 1];
+    ratios.push(ratio);
+  }
+
+  const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+
+  // Identify pattern type
+  if (avgRatio < 1.3) {
+    return 'Linear progression (evenly spaced)';
+  } else if (avgRatio >= 1.3 && avgRatio < 1.7) {
+    return `Geometric progression (~${avgRatio.toFixed(1)}x multiplier)`;
+  } else if (avgRatio >= 1.7 && avgRatio < 2.2) {
+    return 'Doubling pattern (2x progression)';
+  } else {
+    return 'Custom progression';
+  }
+}
+
+/**
+ * Generates recommendations for spacing scale
+ */
+function generateSpacingRecommendation(scaleLength: number, baseUnit: number): string {
+  if (scaleLength <= 5) {
+    return `Limited spacing scale detected. Consider expanding to 8-10 values based on ${baseUnit}px base unit.`;
+  } else if (scaleLength >= 10) {
+    return `Good spacing scale coverage with ${baseUnit}px base unit.`;
+  } else {
+    return `Moderate spacing scale with ${baseUnit}px base unit. Could benefit from standardization.`;
+  }
+}
+
+/**
  * Extracts layout patterns
  */
 function extractLayoutPatterns(): any {
   const layout: any = {
     containers: [],
     breakpoints: extractBreakpoints(),
+    spacingScale: extractSpacingScale(),
     spacingPatterns: {}
   };
 
