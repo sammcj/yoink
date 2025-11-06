@@ -121,16 +121,10 @@ function displayExport(exportData: string): void {
  */
 function getFormatDetails(format: string): { mimeType: string; extension: string } {
   switch (format) {
+    case 'yaml':
+      return { mimeType: 'text/yaml', extension: '.yaml' };
     case 'markdown':
       return { mimeType: 'text/markdown', extension: '.md' };
-    case 'figma':
-      return { mimeType: 'application/json', extension: '.json' };
-    case 'tailwind':
-      return { mimeType: 'application/javascript', extension: '.js' };
-    case 'css':
-      return { mimeType: 'text/css', extension: '.css' };
-    case 'javascript':
-      return { mimeType: 'application/javascript', extension: '.js' };
     default:
       return { mimeType: 'text/plain', extension: '.txt' };
   }
@@ -141,18 +135,12 @@ function getFormatDetails(format: string): { mimeType: string; extension: string
  */
 function generateExport(styles: any, format: string): string {
   switch (format) {
+    case 'yaml':
+      return generateYAML(styles);
     case 'markdown':
       return generateMarkdown(styles);
-    case 'figma':
-      return generateFigmaTokens(styles);
-    case 'tailwind':
-      return generateTailwindConfig(styles);
-    case 'css':
-      return generateCSSVariables(styles);
-    case 'javascript':
-      return generateJSTokens(styles);
     default:
-      return generateMarkdown(styles);
+      return generateYAML(styles);
   }
 }
 
@@ -180,241 +168,145 @@ function showSuccess(message: string): void {
 }
 
 /**
- * Generates Figma Tokens JSON format
- * Compatible with Figma Tokens plugin
+ * Generates YAML format optimized for AI processing
+ * Raw extraction data with usage statistics for AI enhancement
  */
-function generateFigmaTokens(styles: any): string {
-  const tokens: any = {};
+function generateYAML(styles: any): string {
+  const now = new Date().toISOString().split('T')[0];
+  let yaml = `# Design System Extraction (Raw Data)\n`;
+  yaml += `# Extracted: ${now}\n`;
+  yaml += `# Format: YAML (AI-optimized)\n`;
+  yaml += `# Purpose: Pass to AI for semantic enhancement\n\n`;
 
-  // Colors
+  yaml += `metadata:\n`;
+  yaml += `  extraction-date: ${now}\n`;
+  if (styles.typographyContext?.typeScale) {
+    yaml += `  detected-pattern: "${styles.typographyContext.typeScale.ratioName}"\n`;
+    yaml += `  confidence: ${styles.typographyContext.typeScale.confidence}\n`;
+  }
+  yaml += `\n`;
+
+  // Colors - with usage data
+  yaml += `colors:\n`;
+  yaml += `  extracted:\n`;
+  if (styles.colors && styles.colorUsage) {
+    const topColors = styles.colors.slice(0, 15);
+    topColors.forEach((color: string) => {
+      const usage = styles.colorUsage[color] || 0;
+      yaml += `    - value: "${color}"\n`;
+      yaml += `      usage-count: ${usage}\n`;
+    });
+  }
+
+  // CSS Variables (if any colors)
   if (styles.cssVariables) {
-    tokens.colors = {};
+    yaml += `\n  css-variables:\n`;
     for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const cleanName = varName.replace('--', '').replace(/-/g, '.');
       const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-
       if (lightValue && looksLikeColor(lightValue)) {
-        tokens.colors[cleanName] = {
-          value: lightValue,
-          type: 'color'
-        };
+        yaml += `    ${varName.replace('--', '')}: "${lightValue}"\n`;
       }
     }
   }
+  yaml += `\n`;
 
   // Typography
-  if (styles.typographyContext) {
-    tokens.typography = {};
+  yaml += `typography:\n`;
+  if (styles.typographyContext?.typeScale) {
+    const scale = styles.typographyContext.typeScale;
+    yaml += `  detected-scale: [${scale.scale.join(', ')}]\n`;
+    yaml += `  base-size: ${scale.baseSize}\n`;
+    yaml += `  scale-ratio: ${scale.ratio}\n`;
+    yaml += `  ratio-name: "${scale.ratioName}"\n`;
+    yaml += `  confidence: ${scale.confidence}\n`;
+  }
 
-    // Headings
-    for (const [tag, data] of Object.entries(styles.typographyContext.headings || {})) {
+  // Headings
+  if (styles.typographyContext?.headings) {
+    yaml += `\n  headings:\n`;
+    for (const [tag, data] of Object.entries(styles.typographyContext.headings)) {
       const heading = data as any;
-      tokens.typography[tag] = {
-        fontSize: { value: heading.fontSize, type: 'fontSizes' },
-        fontWeight: { value: heading.fontWeight, type: 'fontWeights' },
-        lineHeight: { value: heading.lineHeight, type: 'lineHeights' }
-      };
-    }
-  }
-
-  // Spacing
-  if (styles.layoutPatterns?.spacingScale) {
-    tokens.spacing = {};
-    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any, idx: number) => {
-      tokens.spacing[`spacing-${idx}`] = {
-        value: spacing.value,
-        type: 'spacing'
-      };
-    });
-  }
-
-  // Shadows
-  if (styles.shadows?.elevationLevels) {
-    tokens.shadows = {};
-    styles.shadows.elevationLevels.forEach((level: any) => {
-      tokens.shadows[`elevation-${level.elevationLevel}`] = {
-        value: level.representative,
-        type: 'boxShadow'
-      };
-    });
-  }
-
-  return JSON.stringify(tokens, null, 2);
-}
-
-/**
- * Generates Tailwind CSS config format
- */
-function generateTailwindConfig(styles: any): string {
-  let config = `/** @type {import('tailwindcss').Config} */\n`;
-  config += `module.exports = {\n`;
-  config += `  theme: {\n`;
-  config += `    extend: {\n`;
-
-  // Colors
-  config += `      colors: {\n`;
-  if (styles.cssVariables) {
-    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const cleanName = varName.replace('--', '').replace(/-/g, '-');
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-
-      if (lightValue && looksLikeColor(lightValue)) {
-        config += `        '${cleanName}': '${lightValue}',\n`;
-      }
-    }
-  }
-  config += `      },\n`;
-
-  // Font sizes
-  if (styles.typographyContext?.typeScale) {
-    config += `      fontSize: {\n`;
-    styles.typographyContext.typeScale.scale.forEach((size: number, idx: number) => {
-      config += `        '${idx === 0 ? 'xs' : idx === 1 ? 'sm' : idx === 2 ? 'base' : idx === 3 ? 'lg' : idx === 4 ? 'xl' : `${idx - 2}xl`}': '${size}px',\n`;
-    });
-    config += `      },\n`;
-  }
-
-  // Spacing
-  if (styles.layoutPatterns?.spacingScale) {
-    config += `      spacing: {\n`;
-    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any) => {
-      const value = parseInt(spacing.value);
-      config += `        '${value}': '${spacing.value}',\n`;
-    });
-    config += `      },\n`;
-  }
-
-  // Box shadow
-  if (styles.shadows?.elevationLevels) {
-    config += `      boxShadow: {\n`;
-    styles.shadows.elevationLevels.forEach((level: any) => {
-      config += `        '${level.name.toLowerCase()}': '${level.representative}',\n`;
-    });
-    config += `      },\n`;
-  }
-
-  config += `    },\n`;
-  config += `  },\n`;
-  config += `  plugins: [],\n`;
-  config += `}\n`;
-
-  return config;
-}
-
-/**
- * Generates CSS custom properties format
- */
-function generateCSSVariables(styles: any): string {
-  let css = `/**\n * Design System CSS Custom Properties\n * Generated by Yoink\n */\n\n`;
-
-  css += `:root {\n`;
-  css += `  /* === Colors === */\n`;
-
-  // Colors from CSS variables
-  if (styles.cssVariables) {
-    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-
-      if (lightValue && looksLikeColor(lightValue)) {
-        css += `  ${varName}: ${lightValue};\n`;
+      yaml += `    ${tag}:\n`;
+      yaml += `      size: ${heading.fontSize}\n`;
+      yaml += `      weight: ${heading.fontWeight}\n`;
+      yaml += `      line-height: ${heading.lineHeight}\n`;
+      if (heading.count) yaml += `      count: ${heading.count}\n`;
+      if (heading.examples && heading.examples[0]) {
+        yaml += `      example: "${heading.examples[0].substring(0, 50)}"\n`;
       }
     }
   }
 
-  // Typography
-  if (styles.typographyContext?.typeScale) {
-    css += `\n  /* === Typography === */\n`;
-    css += `  --font-size-base: ${styles.typographyContext.typeScale.baseSize}px;\n`;
-    css += `  --type-scale-ratio: ${styles.typographyContext.typeScale.ratio};\n\n`;
-
-    styles.typographyContext.typeScale.scale.forEach((size: number, idx: number) => {
-      css += `  --font-size-${idx}: ${size}px;\n`;
+  // Body text
+  if (styles.typographyContext?.body && styles.typographyContext.body.length > 0) {
+    yaml += `\n  body-text:\n`;
+    styles.typographyContext.body.slice(0, 5).forEach((bodyStyle: any) => {
+      yaml += `    - usage: "${bodyStyle.usage}"\n`;
+      yaml += `      size: ${bodyStyle.fontSize}\n`;
+      yaml += `      weight: ${bodyStyle.fontWeight}\n`;
+      yaml += `      line-height: ${bodyStyle.lineHeight}\n`;
+      yaml += `      count: ${bodyStyle.count}\n`;
     });
   }
+
+  // Line height patterns
+  if (styles.typographyContext?.lineHeightPatterns) {
+    yaml += `\n  line-height-patterns:\n`;
+    styles.typographyContext.lineHeightPatterns.forEach((pattern: any) => {
+      yaml += `    - value: ${pattern.value}\n`;
+      yaml += `      ratio: ${pattern.ratio}\n`;
+      yaml += `      usage: "${pattern.usage}"\n`;
+      yaml += `      count: ${pattern.count}\n`;
+    });
+  }
+  yaml += `\n`;
 
   // Spacing
+  yaml += `spacing:\n`;
   if (styles.layoutPatterns?.spacingScale) {
-    css += `\n  /* === Spacing === */\n`;
-    css += `  --spacing-base: ${styles.layoutPatterns.spacingScale.baseUnit};\n\n`;
-
-    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any, idx: number) => {
-      css += `  --spacing-${idx}: ${spacing.value};\n`;
+    const spacing = styles.layoutPatterns.spacingScale;
+    yaml += `  base-unit: ${spacing.baseUnit}\n`;
+    yaml += `  pattern: "${spacing.pattern}"\n`;
+    yaml += `  scale: [${spacing.spacingScale.slice(0, 10).map((s: any) => s.value).join(', ')}]\n`;
+    yaml += `\n  usage:\n`;
+    spacing.spacingScale.slice(0, 8).forEach((s: any) => {
+      yaml += `    ${s.value}: ${s.count}  # ${s.usage}\n`;
     });
   }
+  yaml += `\n`;
 
   // Shadows
+  yaml += `shadows:\n`;
   if (styles.shadows?.elevationLevels) {
-    css += `\n  /* === Shadows === */\n`;
+    yaml += `  pattern: "${styles.shadows.pattern}"\n`;
+    yaml += `  levels:\n`;
     styles.shadows.elevationLevels.forEach((level: any) => {
-      css += `  --shadow-${level.name.toLowerCase()}: ${level.representative};\n`;
+      yaml += `    - name: ${level.name.toLowerCase()}\n`;
+      yaml += `      elevation: ${level.elevationLevel}\n`;
+      yaml += `      blur: ${level.shadows[0].blur}px\n`;
+      yaml += `      offset: [${level.shadows[0].offsetX}, ${level.shadows[0].offsetY}]\n`;
+      yaml += `      usage-count: ${level.count}\n`;
+      yaml += `      value: "${level.representative}"\n`;
+    });
+  }
+  yaml += `\n`;
+
+  // Components (simplified)
+  if (styles.components?.buttons && styles.components.buttons.length > 0) {
+    yaml += `components:\n`;
+    yaml += `  buttons:\n`;
+    styles.components.buttons.slice(0, 3).forEach((btn: any) => {
+      yaml += `    - variant: ${btn.variant}\n`;
+      yaml += `      count: ${btn.count}\n`;
+      yaml += `      background: "${btn.styles.background}"\n`;
+      yaml += `      color: "${btn.styles.color}"\n`;
+      yaml += `      padding: "${btn.styles.padding}"\n`;
+      yaml += `      border-radius: ${btn.styles.borderRadius}\n`;
+      yaml += `      font-size: ${btn.styles.fontSize}\n`;
     });
   }
 
-  css += `}\n`;
-
-  return css;
-}
-
-/**
- * Generates JavaScript/TypeScript tokens format
- */
-function generateJSTokens(styles: any): string {
-  let js = `/**\n * Design System Tokens\n * Generated by Yoink\n */\n\n`;
-
-  js += `export const tokens = {\n`;
-
-  // Colors
-  js += `  colors: {\n`;
-  if (styles.cssVariables) {
-    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const cleanName = varName.replace('--', '').replace(/-/g, '_');
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-
-      if (lightValue && looksLikeColor(lightValue)) {
-        js += `    ${cleanName}: '${lightValue}',\n`;
-      }
-    }
-  }
-  js += `  },\n\n`;
-
-  // Typography
-  if (styles.typographyContext?.typeScale) {
-    js += `  typography: {\n`;
-    js += `    baseSize: ${styles.typographyContext.typeScale.baseSize},\n`;
-    js += `    scaleRatio: ${styles.typographyContext.typeScale.ratio},\n`;
-    js += `    sizes: [\n`;
-    styles.typographyContext.typeScale.scale.forEach((size: number) => {
-      js += `      ${size},\n`;
-    });
-    js += `    ],\n`;
-    js += `  },\n\n`;
-  }
-
-  // Spacing
-  if (styles.layoutPatterns?.spacingScale) {
-    js += `  spacing: {\n`;
-    js += `    baseUnit: '${styles.layoutPatterns.spacingScale.baseUnit}',\n`;
-    js += `    scale: [\n`;
-    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any) => {
-      js += `      '${spacing.value}',\n`;
-    });
-    js += `    ],\n`;
-    js += `  },\n\n`;
-  }
-
-  // Shadows
-  if (styles.shadows?.elevationLevels) {
-    js += `  shadows: {\n`;
-    styles.shadows.elevationLevels.forEach((level: any) => {
-      js += `    ${level.name.toLowerCase()}: '${level.representative}',\n`;
-    });
-    js += `  },\n`;
-  }
-
-  js += `};\n\n`;
-  js += `export default tokens;\n`;
-
-  return js;
+  return yaml;
 }
 
 /**
