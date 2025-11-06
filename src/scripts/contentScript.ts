@@ -530,10 +530,33 @@ function parseColorToRGB(color: string): { r: number; g: number; b: number } | n
   }
 
   // Handle oklch, oklab, hsl, and other CSS color formats
-  // Use browser's color computation
+  // Try multiple approaches to get the browser to convert to RGB
   if (color.includes('oklch') || color.includes('oklab') || color.includes('hsl') || color.includes('lab')) {
     try {
       console.log(`[Yoink Debug] parseColorToRGB: Detected special color format: ${color}`);
+
+      // Try Method 1: Use canvas fillStyle (most reliable for color conversion)
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = color;
+          const computedStyle = ctx.fillStyle;
+          console.log(`[Yoink Debug] parseColorToRGB: Canvas fillStyle converted ${color} -> ${computedStyle}`);
+
+          // Check if it was actually converted
+          if (computedStyle !== color && computedStyle.startsWith('#')) {
+            // Canvas returns hex, parse it
+            return parseColorToRGB(computedStyle);
+          }
+        }
+      } catch (e) {
+        console.log(`[Yoink Debug] parseColorToRGB: Canvas method failed for ${color}`);
+      }
+
+      // Try Method 2: Use DOM element with color property
       const tempDiv = document.createElement('div');
       tempDiv.style.display = 'none';
       tempDiv.style.color = color;
@@ -542,7 +565,14 @@ function parseColorToRGB(color: string): { r: number; g: number; b: number } | n
       const computed = getComputedStyle(tempDiv).color;
       document.body.removeChild(tempDiv);
 
-      console.log(`[Yoink Debug] parseColorToRGB: Browser computed ${color} -> ${computed}`);
+      console.log(`[Yoink Debug] parseColorToRGB: DOM computed ${color} -> ${computed}`);
+
+      // Check if browser actually converted the color (prevent infinite recursion)
+      if (computed === color) {
+        console.warn(`[Yoink Debug] parseColorToRGB: Browser could not convert ${color} - returning null`);
+        return null;
+      }
+
       // Recursively parse the computed rgb value
       return parseColorToRGB(computed);
     } catch (e) {
