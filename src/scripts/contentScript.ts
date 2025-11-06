@@ -52,7 +52,9 @@ function extractStyles(includeComponents: boolean = true): any {
     shadows: extractShadows(),
     layout: extractLayoutStructure(),
     icons: extractIcons(),
-    gradients: extractGradients()
+    gradients: extractGradients(),
+    responsive: extractResponsiveBreakpoints(),
+    scrollbars: extractScrollbarStyles()
   };
 
   // Add component patterns and context if requested
@@ -1123,7 +1125,14 @@ function extractComponents(): any {
     alerts: extractAlerts(),
     searchBars: extractSearchBars(),
     toggles: extractToggles(),
-    dividers: extractDividers()
+    dividers: extractDividers(),
+    skeletons: extractSkeletonStates(),
+    emptyStates: extractEmptyStates(),
+    datePickers: extractDatePickers(),
+    colorPickers: extractColorPickers(),
+    richTextEditors: extractRichTextEditors(),
+    sliders: extractSliders(),
+    comboboxes: extractComboboxes()
   };
 }
 
@@ -2802,6 +2811,475 @@ function extractIcons(): any {
     totalSvgs: svgs.length,
     totalIconFonts: iconFontElements.length
   };
+}
+
+/**
+ * Extracts responsive breakpoints from media queries
+ */
+function extractResponsiveBreakpoints(): any {
+  const breakpoints = new Map<number, any>();
+  const mediaQueries: any[] = [];
+
+  try {
+    const sheets = Array.from(document.styleSheets);
+
+    sheets.forEach(sheet => {
+      try {
+        const rules = Array.from(sheet.cssRules || sheet.rules || []);
+
+        rules.forEach(rule => {
+          if (rule instanceof CSSMediaRule) {
+            const mediaText = rule.media.mediaText;
+            mediaQueries.push(mediaText);
+
+            // Extract min-width and max-width values
+            const minWidthMatch = mediaText.match(/min-width:\s*(\d+)px/);
+            const maxWidthMatch = mediaText.match(/max-width:\s*(\d+)px/);
+
+            if (minWidthMatch) {
+              const width = parseInt(minWidthMatch[1], 10);
+              if (!breakpoints.has(width)) {
+                breakpoints.set(width, {
+                  value: `${width}px`,
+                  type: 'min-width',
+                  queries: []
+                });
+              }
+              breakpoints.get(width)!.queries.push(mediaText);
+            }
+
+            if (maxWidthMatch) {
+              const width = parseInt(maxWidthMatch[1], 10);
+              if (!breakpoints.has(width)) {
+                breakpoints.set(width, {
+                  value: `${width}px`,
+                  type: 'max-width',
+                  queries: []
+                });
+              }
+              breakpoints.get(width)!.queries.push(mediaText);
+            }
+          }
+        });
+      } catch (e) {
+        // Cross-origin stylesheet, skip
+      }
+    });
+  } catch (e) {
+    // Error accessing stylesheets
+  }
+
+  // Sort breakpoints and deduplicate queries
+  const sortedBreakpoints = Array.from(breakpoints.entries())
+    .map(([width, data]) => ({
+      width,
+      value: data.value,
+      type: data.type,
+      queryCount: data.queries.length
+    }))
+    .sort((a, b) => a.width - b.width);
+
+  // Infer common breakpoint names
+  const namedBreakpoints = sortedBreakpoints.map(bp => {
+    let name = 'custom';
+
+    // Common breakpoint standards
+    if (bp.width === 640) name = 'sm (Tailwind)';
+    else if (bp.width === 768) name = 'md (Tailwind/Bootstrap)';
+    else if (bp.width === 1024) name = 'lg (Tailwind)';
+    else if (bp.width === 1280) name = 'xl (Tailwind)';
+    else if (bp.width === 1536) name = '2xl (Tailwind)';
+    else if (bp.width === 576) name = 'sm (Bootstrap)';
+    else if (bp.width === 992) name = 'lg (Bootstrap)';
+    else if (bp.width === 1200) name = 'xl (Bootstrap)';
+    else if (bp.width === 1400) name = 'xxl (Bootstrap)';
+
+    return { ...bp, name };
+  });
+
+  return {
+    breakpoints: namedBreakpoints,
+    totalMediaQueries: mediaQueries.length,
+    uniqueBreakpoints: namedBreakpoints.length
+  };
+}
+
+/**
+ * Extracts custom scrollbar styles
+ */
+function extractScrollbarStyles(): any[] {
+  const scrollbars: any[] = [];
+
+  try {
+    const sheets = Array.from(document.styleSheets);
+
+    sheets.forEach(sheet => {
+      try {
+        const rules = Array.from(sheet.cssRules || sheet.rules || []);
+
+        rules.forEach(rule => {
+          if (rule instanceof CSSStyleRule) {
+            const selector = rule.selectorText;
+
+            // Check for webkit scrollbar selectors
+            if (selector && (
+              selector.includes('::-webkit-scrollbar') ||
+              selector.includes('scrollbar-width') ||
+              selector.includes('scrollbar-color')
+            )) {
+              const style = rule.style;
+              const scrollbarData: any = {
+                selector,
+                styles: {}
+              };
+
+              // Webkit scrollbar properties
+              if (style.width) scrollbarData.styles.width = style.width;
+              if (style.height) scrollbarData.styles.height = style.height;
+              if (style.backgroundColor) scrollbarData.styles.backgroundColor = style.backgroundColor;
+              if (style.borderRadius) scrollbarData.styles.borderRadius = style.borderRadius;
+
+              // Firefox scrollbar properties
+              if (style.scrollbarWidth) scrollbarData.styles.scrollbarWidth = style.scrollbarWidth;
+              if (style.scrollbarColor) scrollbarData.styles.scrollbarColor = style.scrollbarColor;
+
+              if (Object.keys(scrollbarData.styles).length > 0) {
+                scrollbars.push(scrollbarData);
+              }
+            }
+          }
+        });
+      } catch (e) {
+        // Cross-origin stylesheet, skip
+      }
+    });
+  } catch (e) {
+    // Error accessing stylesheets
+  }
+
+  return scrollbars.slice(0, 5);
+}
+
+/**
+ * Extracts skeleton/loading state components
+ */
+function extractSkeletonStates(): any[] {
+  const skeletons: any[] = [];
+  const seen = new Map<string, any>();
+
+  const skeletonSelectors = '[class*="skeleton"], [class*="shimmer"], [class*="placeholder"], [class*="loading"][class*="state"]';
+  const elements = document.querySelectorAll(skeletonSelectors);
+
+  elements.forEach(skeleton => {
+    const styles = getComputedStyle(skeleton);
+    const el = skeleton as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        backgroundImage: styles.backgroundImage,
+        height: styles.height,
+        width: styles.width,
+        borderRadius: styles.borderRadius,
+        animation: styles.animation
+      };
+
+      // Check if it has shimmer/pulse animation
+      const hasAnimation = styles.animation !== 'none' ||
+                          styles.backgroundImage.includes('gradient');
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: hasAnimation ? 'animated' : 'static',
+        count: 1
+      };
+
+      skeletons.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return skeletons.sort((a, b) => b.count - a.count).slice(0, 5);
+}
+
+/**
+ * Extracts empty state components
+ */
+function extractEmptyStates(): any[] {
+  const emptyStates: any[] = [];
+  const seen = new Map<string, any>();
+
+  const emptySelectors = '[class*="empty"], [class*="no-data"], [class*="no-results"], [class*="blank-slate"]';
+  const elements = document.querySelectorAll(emptySelectors);
+
+  elements.forEach(empty => {
+    const styles = getComputedStyle(empty);
+    const el = empty as HTMLElement;
+
+    // Should have some content (text or image)
+    const hasContent = el.textContent?.trim().length || el.querySelector('img, svg');
+    if (!hasContent) return;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        textAlign: styles.textAlign,
+        padding: styles.padding,
+        color: styles.color,
+        fontSize: styles.fontSize
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'empty-state',
+        count: 1
+      };
+
+      emptyStates.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return emptyStates.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts date picker components
+ */
+function extractDatePickers(): any[] {
+  const datePickers: any[] = [];
+  const seen = new Map<string, any>();
+
+  const dateSelectors = 'input[type="date"], input[type="datetime-local"], [class*="date-picker"], [class*="calendar"], [role="dialog"][aria-label*="date"]';
+  const elements = document.querySelectorAll(dateSelectors);
+
+  elements.forEach(picker => {
+    const styles = getComputedStyle(picker);
+    const el = picker as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        fontSize: styles.fontSize,
+        height: styles.height
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'date-picker',
+        count: 1
+      };
+
+      datePickers.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return datePickers.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts color picker components
+ */
+function extractColorPickers(): any[] {
+  const colorPickers: any[] = [];
+  const seen = new Map<string, any>();
+
+  const colorSelectors = 'input[type="color"], [class*="color-picker"], [class*="colour-picker"]';
+  const elements = document.querySelectorAll(colorSelectors);
+
+  elements.forEach(picker => {
+    const styles = getComputedStyle(picker);
+    const el = picker as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        width: styles.width,
+        height: styles.height,
+        border: styles.border,
+        borderRadius: styles.borderRadius
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'color-picker',
+        count: 1
+      };
+
+      colorPickers.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return colorPickers.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts rich text editor components
+ */
+function extractRichTextEditors(): any[] {
+  const editors: any[] = [];
+  const seen = new Map<string, any>();
+
+  const editorSelectors = '[contenteditable="true"], [class*="editor"], [class*="rich-text"], [role="textbox"][aria-multiline="true"]';
+  const elements = document.querySelectorAll(editorSelectors);
+
+  elements.forEach(editor => {
+    const styles = getComputedStyle(editor);
+    const el = editor as HTMLElement;
+
+    // Should be reasonably sized
+    const rect = el.getBoundingClientRect();
+    if (rect.height < 50) return;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        fontSize: styles.fontSize,
+        lineHeight: styles.lineHeight,
+        minHeight: styles.minHeight
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'rich-text-editor',
+        count: 1
+      };
+
+      editors.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return editors.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts slider/range input components
+ */
+function extractSliders(): any[] {
+  const sliders: any[] = [];
+  const seen = new Map<string, any>();
+
+  const sliderSelectors = 'input[type="range"], [role="slider"], [class*="slider"]';
+  const elements = document.querySelectorAll(sliderSelectors);
+
+  elements.forEach(slider => {
+    const styles = getComputedStyle(slider);
+    const el = slider as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        width: styles.width,
+        height: styles.height,
+        background: styles.backgroundColor
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'slider',
+        count: 1
+      };
+
+      sliders.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return sliders.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts advanced select/combobox components
+ */
+function extractComboboxes(): any[] {
+  const comboboxes: any[] = [];
+  const seen = new Map<string, any>();
+
+  const comboSelectors = '[role="combobox"], [class*="combobox"], [class*="autocomplete"], [class*="typeahead"]';
+  const elements = document.querySelectorAll(comboSelectors);
+
+  elements.forEach(combo => {
+    const styles = getComputedStyle(combo);
+    const el = combo as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        fontSize: styles.fontSize,
+        height: styles.height
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'combobox',
+        count: 1,
+        states: extractStateStyles(el)
+      };
+
+      comboboxes.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return comboboxes.sort((a, b) => b.count - a.count).slice(0, 3);
 }
 
 /**

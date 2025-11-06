@@ -807,6 +807,161 @@ function generateYAML(styles: any): string {
     yaml += `\n`;
   }
 
+  // Specialized Components
+  if (styles.components) {
+    let hasSpecialized = false;
+
+    // Skeletons
+    if (styles.components.skeletons && styles.components.skeletons.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  skeletons:\n`;
+      styles.components.skeletons.forEach((skeleton: any) => {
+        yaml += `    - variant: ${skeleton.variant}\n`;
+        yaml += `      count: ${skeleton.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${skeleton.styles.background}"\n`;
+        yaml += `        height: ${skeleton.styles.height}\n`;
+        yaml += `        border-radius: ${skeleton.styles.borderRadius}\n`;
+        if (skeleton.styles.animation !== 'none') yaml += `        animation: "${skeleton.styles.animation}"\n`;
+      });
+    }
+
+    // Empty States
+    if (styles.components.emptyStates && styles.components.emptyStates.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  empty-states:\n`;
+      styles.components.emptyStates.forEach((empty: any) => {
+        yaml += `    - count: ${empty.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        text-align: ${empty.styles.textAlign}\n`;
+        yaml += `        padding: ${empty.styles.padding}\n`;
+        yaml += `        color: "${empty.styles.color}"\n`;
+      });
+    }
+
+    // Date Pickers
+    if (styles.components.datePickers && styles.components.datePickers.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  date-pickers:\n`;
+      styles.components.datePickers.forEach((picker: any) => {
+        yaml += `    - count: ${picker.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${picker.styles.background}"\n`;
+        yaml += `        border: "${picker.styles.border}"\n`;
+        yaml += `        height: ${picker.styles.height}\n`;
+      });
+    }
+
+    // Color Pickers
+    if (styles.components.colorPickers && styles.components.colorPickers.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  color-pickers:\n`;
+      styles.components.colorPickers.forEach((picker: any) => {
+        yaml += `    - count: ${picker.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        width: ${picker.styles.width}\n`;
+        yaml += `        height: ${picker.styles.height}\n`;
+      });
+    }
+
+    // Rich Text Editors
+    if (styles.components.richTextEditors && styles.components.richTextEditors.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  rich-text-editors:\n`;
+      styles.components.richTextEditors.forEach((editor: any) => {
+        yaml += `    - count: ${editor.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${editor.styles.background}"\n`;
+        yaml += `        border: "${editor.styles.border}"\n`;
+        yaml += `        padding: ${editor.styles.padding}\n`;
+        yaml += `        min-height: ${editor.styles.minHeight}\n`;
+      });
+    }
+
+    // Sliders
+    if (styles.components.sliders && styles.components.sliders.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  sliders:\n`;
+      styles.components.sliders.forEach((slider: any) => {
+        yaml += `    - count: ${slider.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        width: ${slider.styles.width}\n`;
+        yaml += `        height: ${slider.styles.height}\n`;
+        yaml += `        background: "${slider.styles.background}"\n`;
+      });
+    }
+
+    // Comboboxes
+    if (styles.components.comboboxes && styles.components.comboboxes.length > 0) {
+      if (!hasSpecialized) {
+        yaml += `specialized-components:\n`;
+        hasSpecialized = true;
+      }
+      yaml += `  comboboxes:\n`;
+      styles.components.comboboxes.forEach((combo: any) => {
+        yaml += `    - count: ${combo.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${combo.styles.background}"\n`;
+        yaml += `        border: "${combo.styles.border}"\n`;
+        yaml += `        height: ${combo.styles.height}\n`;
+        if (combo.states && combo.states.focus) {
+          yaml += `      states:\n`;
+          yaml += `        focus:\n`;
+          Object.entries(combo.states.focus).forEach(([key, value]) => {
+            yaml += `          ${key}: "${value}"\n`;
+          });
+        }
+      });
+    }
+
+    if (hasSpecialized) yaml += `\n`;
+  }
+
+  // Responsive Breakpoints
+  if (styles.responsive && styles.responsive.breakpoints && styles.responsive.breakpoints.length > 0) {
+    yaml += `responsive:\n`;
+    yaml += `  breakpoints:\n`;
+    styles.responsive.breakpoints.forEach((bp: any) => {
+      yaml += `    - width: ${bp.width}px\n`;
+      yaml += `      name: "${bp.name}"\n`;
+      yaml += `      type: ${bp.type}\n`;
+      yaml += `      usage-count: ${bp.queryCount}\n`;
+    });
+    yaml += `  total-media-queries: ${styles.responsive.totalMediaQueries}\n`;
+    yaml += `\n`;
+  }
+
+  // Scrollbar Styles
+  if (styles.scrollbars && styles.scrollbars.length > 0) {
+    yaml += `scrollbars:\n`;
+    styles.scrollbars.forEach((scrollbar: any) => {
+      yaml += `  - selector: "${scrollbar.selector}"\n`;
+      yaml += `    styles:\n`;
+      Object.entries(scrollbar.styles).forEach(([key, value]) => {
+        yaml += `      ${key}: "${value}"\n`;
+      });
+    });
+    yaml += `\n`;
+  }
+
   return yaml;
 }
 
