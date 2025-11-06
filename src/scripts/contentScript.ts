@@ -492,33 +492,40 @@ function parseColorToRGB(color: string): { r: number; g: number; b: number } | n
   // Handle rgb/rgba
   const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   if (rgbaMatch) {
-    return {
+    const result = {
       r: parseInt(rgbaMatch[1]),
       g: parseInt(rgbaMatch[2]),
       b: parseInt(rgbaMatch[3])
     };
+    console.log(`[Yoink Debug] parseColorToRGB: ${color} -> RGB(${result.r}, ${result.g}, ${result.b})`);
+    return result;
   }
 
   // Handle hex colors
   if (color.startsWith('#')) {
     const hex = color.substring(1);
     if (hex.length === 3) {
-      return {
+      const result = {
         r: parseInt(hex[0] + hex[0], 16),
         g: parseInt(hex[1] + hex[1], 16),
         b: parseInt(hex[2] + hex[2], 16)
       };
+      console.log(`[Yoink Debug] parseColorToRGB: ${color} -> RGB(${result.r}, ${result.g}, ${result.b})`);
+      return result;
     } else if (hex.length === 6) {
-      return {
+      const result = {
         r: parseInt(hex.substring(0, 2), 16),
         g: parseInt(hex.substring(2, 4), 16),
         b: parseInt(hex.substring(4, 6), 16)
       };
+      console.log(`[Yoink Debug] parseColorToRGB: ${color} -> RGB(${result.r}, ${result.g}, ${result.b})`);
+      return result;
     }
   }
 
   // Handle transparent
   if (color === 'transparent' || color === 'rgba(0, 0, 0, 0)') {
+    console.log(`[Yoink Debug] parseColorToRGB: ${color} -> RGB(0, 0, 0) [transparent]`);
     return { r: 0, g: 0, b: 0 };
   }
 
@@ -526,6 +533,7 @@ function parseColorToRGB(color: string): { r: number; g: number; b: number } | n
   // Use browser's color computation
   if (color.includes('oklch') || color.includes('oklab') || color.includes('hsl') || color.includes('lab')) {
     try {
+      console.log(`[Yoink Debug] parseColorToRGB: Detected special color format: ${color}`);
       const tempDiv = document.createElement('div');
       tempDiv.style.display = 'none';
       tempDiv.style.color = color;
@@ -534,13 +542,16 @@ function parseColorToRGB(color: string): { r: number; g: number; b: number } | n
       const computed = getComputedStyle(tempDiv).color;
       document.body.removeChild(tempDiv);
 
+      console.log(`[Yoink Debug] parseColorToRGB: Browser computed ${color} -> ${computed}`);
       // Recursively parse the computed rgb value
       return parseColorToRGB(computed);
     } catch (e) {
+      console.error(`[Yoink Debug] parseColorToRGB: Failed to parse ${color}`, e);
       return null;
     }
   }
 
+  console.warn(`[Yoink Debug] parseColorToRGB: Could not parse color: ${color}`);
   return null;
 }
 
@@ -555,7 +566,9 @@ function calculateColorDistance(color1: string, color2: string): number {
 
   if (!rgb1 || !rgb2) {
     // If we can't parse, consider them different
-    return color1 === color2 ? 0 : 1;
+    const result = color1 === color2 ? 0 : 1;
+    console.log(`[Yoink Debug] calculateColorDistance: Failed to parse - returning ${result}`);
+    return result;
   }
 
   // Calculate Euclidean distance in RGB space
@@ -566,7 +579,9 @@ function calculateColorDistance(color1: string, color2: string): number {
   const distance = Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff);
 
   // Normalize to 0-1 (max distance is sqrt(255^2 + 255^2 + 255^2) ≈ 441.67)
-  return distance / 441.67;
+  const normalized = distance / 441.67;
+  console.log(`[Yoink Debug] calculateColorDistance: RGB(${rgb1.r},${rgb1.g},${rgb1.b}) vs RGB(${rgb2.r},${rgb2.g},${rgb2.b}) = ${normalized.toFixed(4)} (raw: ${distance.toFixed(2)})`);
+  return normalized;
 }
 
 /**
@@ -579,12 +594,21 @@ function areButtonsSimilar(btn1: any, btn2: any): boolean {
   const styles1 = btn1.styles;
   const styles2 = btn2.styles;
 
+  console.log(`[Yoink Debug] ========== Comparing Buttons ==========`);
+  console.log(`[Yoink Debug] Button 1: variant=${btn1.variant}, bg=${styles1.background}, color=${styles1.color}, padding=${styles1.padding}, radius=${styles1.borderRadius}, fontSize=${styles1.fontSize}`);
+  console.log(`[Yoink Debug] Button 2: variant=${btn2.variant}, bg=${styles2.background}, color=${styles2.color}, padding=${styles2.padding}, radius=${styles2.borderRadius}, fontSize=${styles2.fontSize}`);
+
   // 1. Compare variant type first (must match)
-  if (btn1.variant !== btn2.variant) return false;
+  if (btn1.variant !== btn2.variant) {
+    console.log(`[Yoink Debug] ❌ FAIL: Variant mismatch - "${btn1.variant}" !== "${btn2.variant}"`);
+    return false;
+  }
+  console.log(`[Yoink Debug] ✓ Variant match: "${btn1.variant}"`);
 
   const variantType = btn1.variant.toLowerCase();
   const isGhostOrOutline = variantType.includes('ghost') || variantType.includes('outline') || variantType.includes('link');
   const isSecondarySized = variantType.includes('secondary');
+  console.log(`[Yoink Debug] isGhostOrOutline=${isGhostOrOutline}, isSecondarySized=${isSecondarySized}`);
 
   // 2. Compare background colors
   const bg1 = styles1.background || 'transparent';
@@ -599,15 +623,26 @@ function areButtonsSimilar(btn1: any, btn2: any): boolean {
   if (isGhostOrOutline) {
     // For outline buttons, allow transparent vs white (both are "not filled")
     const bothMinimal = (isTransparent1 || isWhite1) && (isTransparent2 || isWhite2);
+    console.log(`[Yoink Debug] Background check (ghost/outline): isTransparent1=${isTransparent1}, isWhite1=${isWhite1}, isTransparent2=${isTransparent2}, isWhite2=${isWhite2}, bothMinimal=${bothMinimal}`);
     if (!bothMinimal) {
       // One has color, one is minimal - check if similar
       const bgDistance = calculateColorDistance(bg1, bg2);
-      if (bgDistance > 0.15) return false; // More forgiving for ghost/outline
+      if (bgDistance > 0.15) {
+        console.log(`[Yoink Debug] ❌ FAIL: Background distance ${bgDistance.toFixed(4)} > 0.15`);
+        return false;
+      }
+      console.log(`[Yoink Debug] ✓ Background distance acceptable: ${bgDistance.toFixed(4)} <= 0.15`);
+    } else {
+      console.log(`[Yoink Debug] ✓ Both backgrounds minimal (transparent/white) - skipping distance check`);
     }
   } else {
     // For filled buttons, enforce stricter color matching
     const bgDistance = calculateColorDistance(bg1, bg2);
-    if (bgDistance > 0.12) return false;
+    if (bgDistance > 0.12) {
+      console.log(`[Yoink Debug] ❌ FAIL: Background distance ${bgDistance.toFixed(4)} > 0.12 (filled button)`);
+      return false;
+    }
+    console.log(`[Yoink Debug] ✓ Background distance acceptable: ${bgDistance.toFixed(4)} <= 0.12`);
   }
 
   // 3. Compare text colors (more forgiving for ghost/outline variants)
@@ -615,9 +650,17 @@ function areButtonsSimilar(btn1: any, btn2: any): boolean {
 
   if (isGhostOrOutline) {
     // Ghost/outline buttons often have varying text shades (dark, medium, light gray)
-    if (textDistance > 0.20) return false; // Very forgiving: ~50 RGB units
+    if (textDistance > 0.20) {
+      console.log(`[Yoink Debug] ❌ FAIL: Text distance ${textDistance.toFixed(4)} > 0.20 (ghost/outline)`);
+      return false;
+    }
+    console.log(`[Yoink Debug] ✓ Text distance acceptable: ${textDistance.toFixed(4)} <= 0.20`);
   } else {
-    if (textDistance > 0.12) return false; // Standard tolerance for filled buttons
+    if (textDistance > 0.12) {
+      console.log(`[Yoink Debug] ❌ FAIL: Text distance ${textDistance.toFixed(4)} > 0.12 (filled button)`);
+      return false;
+    }
+    console.log(`[Yoink Debug] ✓ Text distance acceptable: ${textDistance.toFixed(4)} <= 0.12`);
   }
 
   // 4. Compare border-radius (very forgiving for same variant type)
@@ -627,16 +670,28 @@ function areButtonsSimilar(btn1: any, btn2: any): boolean {
 
   // Ghost/outline buttons often have 0px (flat) or 8px (rounded) - both are acceptable
   if (isGhostOrOutline || isSecondarySized) {
-    if (radiusDiff > 10) return false; // Very forgiving: 0px vs 10px is okay
+    if (radiusDiff > 10) {
+      console.log(`[Yoink Debug] ❌ FAIL: Border-radius diff ${radiusDiff.toFixed(2)}px > 10px (ghost/outline)`);
+      return false;
+    }
+    console.log(`[Yoink Debug] ✓ Border-radius acceptable: ${radiusDiff.toFixed(2)}px <= 10px`);
   } else {
-    if (radiusDiff > 6) return false;
+    if (radiusDiff > 6) {
+      console.log(`[Yoink Debug] ❌ FAIL: Border-radius diff ${radiusDiff.toFixed(2)}px > 6px (filled)`);
+      return false;
+    }
+    console.log(`[Yoink Debug] ✓ Border-radius acceptable: ${radiusDiff.toFixed(2)}px <= 6px`);
   }
 
   // 5. Compare padding (size variants often differ here, be forgiving)
   const padding1 = parsePaddingValue(styles1.padding || '0px');
   const padding2 = parsePaddingValue(styles2.padding || '0px');
   const paddingDiff = Math.abs(padding1 - padding2);
-  if (paddingDiff > 12) return false;
+  if (paddingDiff > 12) {
+    console.log(`[Yoink Debug] ❌ FAIL: Padding diff ${paddingDiff.toFixed(2)}px > 12px`);
+    return false;
+  }
+  console.log(`[Yoink Debug] ✓ Padding acceptable: ${paddingDiff.toFixed(2)}px <= 12px`);
 
   // 6. Compare font size (size variants differ here, be very forgiving)
   const fontSize1 = parseFloat(styles1.fontSize) || 14;
@@ -644,12 +699,20 @@ function areButtonsSimilar(btn1: any, btn2: any): boolean {
   const fontDiff = Math.abs(fontSize1 - fontSize2);
 
   // Small buttons (10-12px) vs Medium (14-16px) vs Large (18-20px) should merge
-  if (fontDiff > 6) return false;
+  if (fontDiff > 6) {
+    console.log(`[Yoink Debug] ❌ FAIL: Font size diff ${fontDiff.toFixed(2)}px > 6px`);
+    return false;
+  }
+  console.log(`[Yoink Debug] ✓ Font size acceptable: ${fontDiff.toFixed(2)}px <= 6px`);
 
   // If fonts are significantly different (>4px), require closer padding match
-  if (fontDiff > 4 && paddingDiff > 6) return false;
+  if (fontDiff > 4 && paddingDiff > 6) {
+    console.log(`[Yoink Debug] ❌ FAIL: Combined check - fontDiff ${fontDiff.toFixed(2)}px > 4px AND paddingDiff ${paddingDiff.toFixed(2)}px > 6px`);
+    return false;
+  }
 
   // All checks passed - these buttons are similar!
+  console.log(`[Yoink Debug] ✅ PASS: All checks passed - buttons are similar!`);
   return true;
 }
 
