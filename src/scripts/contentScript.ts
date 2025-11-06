@@ -553,6 +553,7 @@ function calculateColorDistance(color1: string, color2: string): number {
  * Checks if two buttons are visually similar enough to be merged
  * Uses weighted scoring for colors (most important) and structure (less important)
  * More forgiving tolerances to reduce variant fragmentation
+ * Variant-aware: buttons with same semantic variant (ghost, outline, etc.) merge more easily
  */
 function areButtonsSimilar(btn1: any, btn2: any): boolean {
   const styles1 = btn1.styles;
@@ -561,33 +562,63 @@ function areButtonsSimilar(btn1: any, btn2: any): boolean {
   // 1. Compare variant type first (must match)
   if (btn1.variant !== btn2.variant) return false;
 
-  // 2. Compare background colors (most important indicator)
-  const bgDistance = calculateColorDistance(styles1.background || 'transparent', styles2.background || 'transparent');
-  if (bgDistance > 0.12) return false; // Increased tolerance: ~30 RGB units
+  const variantType = btn1.variant.toLowerCase();
+  const isGhostOrOutline = variantType.includes('ghost') || variantType.includes('outline') || variantType.includes('link');
+  const isSecondarySized = variantType.includes('secondary');
 
-  // 3. Compare text colors (also important)
+  // 2. Compare background colors
+  const bg1 = styles1.background || 'transparent';
+  const bg2 = styles2.background || 'transparent';
+
+  // Special handling for ghost/outline buttons: transparent and white are similar
+  const isTransparent1 = bg1 === 'rgba(0, 0, 0, 0)' || bg1 === 'transparent';
+  const isTransparent2 = bg2 === 'rgba(0, 0, 0, 0)' || bg2 === 'transparent';
+  const isWhite1 = bg1 === 'rgb(255, 255, 255)' || bg1 === '#ffffff';
+  const isWhite2 = bg2 === 'rgb(255, 255, 255)' || bg2 === '#ffffff';
+
+  if (isGhostOrOutline) {
+    // For outline buttons, allow transparent vs white (both are "not filled")
+    const bothMinimal = (isTransparent1 || isWhite1) && (isTransparent2 || isWhite2);
+    if (!bothMinimal) {
+      // One has color, one is minimal - check if similar
+      const bgDistance = calculateColorDistance(bg1, bg2);
+      if (bgDistance > 0.15) return false; // More forgiving for ghost/outline
+    }
+  } else {
+    // For filled buttons, enforce stricter color matching
+    const bgDistance = calculateColorDistance(bg1, bg2);
+    if (bgDistance > 0.12) return false;
+  }
+
+  // 3. Compare text colors
   const textDistance = calculateColorDistance(styles1.color || 'rgb(0,0,0)', styles2.color || 'rgb(0,0,0)');
-  if (textDistance > 0.12) return false; // Increased tolerance: ~30 RGB units
+  if (textDistance > 0.12) return false;
 
-  // 4. Compare border-radius (can vary for same button type)
+  // 4. Compare border-radius (very forgiving for same variant type)
   const radius1 = parseFloat(styles1.borderRadius) || 0;
   const radius2 = parseFloat(styles2.borderRadius) || 0;
-  if (Math.abs(radius1 - radius2) > 6) return false; // Increased: Allow 6px difference
+  const radiusDiff = Math.abs(radius1 - radius2);
+
+  // Ghost/outline buttons often have 0px (flat) or 8px (rounded) - both are acceptable
+  if (isGhostOrOutline || isSecondarySized) {
+    if (radiusDiff > 10) return false; // Very forgiving: 0px vs 10px is okay
+  } else {
+    if (radiusDiff > 6) return false;
+  }
 
   // 5. Compare padding (size variants often differ here, be forgiving)
   const padding1 = parsePaddingValue(styles1.padding || '0px');
   const padding2 = parsePaddingValue(styles2.padding || '0px');
   const paddingDiff = Math.abs(padding1 - padding2);
-  if (paddingDiff > 12) return false; // Increased: Allow 12px difference for small/medium/large
+  if (paddingDiff > 12) return false;
 
   // 6. Compare font size (size variants differ here, be very forgiving)
   const fontSize1 = parseFloat(styles1.fontSize) || 14;
   const fontSize2 = parseFloat(styles2.fontSize) || 14;
   const fontDiff = Math.abs(fontSize1 - fontSize2);
 
-  // Allow font size differences for same variant type
   // Small buttons (10-12px) vs Medium (14-16px) vs Large (18-20px) should merge
-  if (fontDiff > 6) return false; // Increased: Allow 6px difference
+  if (fontDiff > 6) return false;
 
   // If fonts are significantly different (>4px), require closer padding match
   if (fontDiff > 4 && paddingDiff > 6) return false;
