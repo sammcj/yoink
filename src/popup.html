@@ -37,6 +37,18 @@
 
     <!-- Results section (hidden until scan completes) -->
     <div id="resultsSection" class="results hidden">
+      <!-- Export format selector -->
+      <div class="export-format-section">
+        <label for="exportFormat">Export Format:</label>
+        <select id="exportFormat" class="format-selector">
+          <option value="markdown">Markdown (.md)</option>
+          <option value="figma">Figma Tokens (.json)</option>
+          <option value="tailwind">Tailwind Config (.js)</option>
+          <option value="css">CSS Variables (.css)</option>
+          <option value="javascript">JavaScript/TypeScript (.js/.ts)</option>
+        </select>
+      </div>
+
       <!-- Action buttons for copy and download -->
       <div class="action-buttons">
         <button id="copyBtn" class="action-btn copy-btn">
@@ -45,7 +57,7 @@
         </button>
         <button id="downloadBtn" class="action-btn download-btn">
           <span class="btn-icon">💾</span>
-          Download .md
+          Download
         </button>
       </div>
 

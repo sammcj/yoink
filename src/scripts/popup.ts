@@ -8,13 +8,15 @@ const scanButton = document.getElementById('scanBtn') as HTMLButtonElement;
 const copyButton = document.getElementById('copyBtn') as HTMLButtonElement;
 const downloadButton = document.getElementById('downloadBtn') as HTMLButtonElement;
 const includeComponentsCheckbox = document.getElementById('includeComponentsCheckbox') as HTMLInputElement;
+const exportFormatSelector = document.getElementById('exportFormat') as HTMLSelectElement;
 const loadingState = document.getElementById('loadingState') as HTMLDivElement;
 const resultsSection = document.getElementById('resultsSection') as HTMLDivElement;
 const errorState = document.getElementById('errorState') as HTMLDivElement;
 const markdownPreview = document.getElementById('markdownPreview') as HTMLDivElement;
 const successMessage = document.getElementById('successMessage') as HTMLDivElement;
 
-let currentMarkdown = '';
+let currentExportData = '';
+let currentStyleData: any = null;
 
 // Scan button click handler
 scanButton.addEventListener('click', async () => {
@@ -41,8 +43,9 @@ scanButton.addEventListener('click', async () => {
         }
 
         if (response.success && response.data) {
-          const markdown = generateMarkdown(response.data);
-          displayMarkdown(markdown);
+          currentStyleData = response.data;
+          const exportData = generateExport(currentStyleData, exportFormatSelector.value);
+          displayExport(exportData);
         } else {
           showError(response.error || 'Failed to extract styles');
         }
@@ -55,20 +58,31 @@ scanButton.addEventListener('click', async () => {
   }
 });
 
+// Format selector change handler
+exportFormatSelector.addEventListener('change', () => {
+  if (currentStyleData) {
+    const exportData = generateExport(currentStyleData, exportFormatSelector.value);
+    displayExport(exportData);
+  }
+});
+
 // Copy button click handler
 copyButton.addEventListener('click', () => {
-  navigator.clipboard.writeText(currentMarkdown).then(() => {
+  navigator.clipboard.writeText(currentExportData).then(() => {
     showSuccess('Copied to clipboard!');
   });
 });
 
 // Download button click handler
 downloadButton.addEventListener('click', () => {
-  const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
+  const format = exportFormatSelector.value;
+  const { mimeType, extension } = getFormatDetails(format);
+
+  const blob = new Blob([currentExportData], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'design-system.md';
+  a.download = `design-system${extension}`;
   a.click();
   URL.revokeObjectURL(url);
   showSuccess('Downloaded!');
@@ -93,13 +107,53 @@ function hideLoading(): void {
 }
 
 /**
- * Displays markdown output
+ * Displays export output
  */
-function displayMarkdown(markdown: string): void {
-  currentMarkdown = markdown;
-  markdownPreview.textContent = markdown;
+function displayExport(exportData: string): void {
+  currentExportData = exportData;
+  markdownPreview.textContent = exportData;
   resultsSection.classList.remove('hidden');
   errorState.classList.add('hidden');
+}
+
+/**
+ * Gets format details for download
+ */
+function getFormatDetails(format: string): { mimeType: string; extension: string } {
+  switch (format) {
+    case 'markdown':
+      return { mimeType: 'text/markdown', extension: '.md' };
+    case 'figma':
+      return { mimeType: 'application/json', extension: '.json' };
+    case 'tailwind':
+      return { mimeType: 'application/javascript', extension: '.js' };
+    case 'css':
+      return { mimeType: 'text/css', extension: '.css' };
+    case 'javascript':
+      return { mimeType: 'application/javascript', extension: '.js' };
+    default:
+      return { mimeType: 'text/plain', extension: '.txt' };
+  }
+}
+
+/**
+ * Generates export in the specified format
+ */
+function generateExport(styles: any, format: string): string {
+  switch (format) {
+    case 'markdown':
+      return generateMarkdown(styles);
+    case 'figma':
+      return generateFigmaTokens(styles);
+    case 'tailwind':
+      return generateTailwindConfig(styles);
+    case 'css':
+      return generateCSSVariables(styles);
+    case 'javascript':
+      return generateJSTokens(styles);
+    default:
+      return generateMarkdown(styles);
+  }
 }
 
 /**
@@ -123,6 +177,244 @@ function showSuccess(message: string): void {
   setTimeout(() => {
     successMessage.classList.add('hidden');
   }, 2000);
+}
+
+/**
+ * Generates Figma Tokens JSON format
+ * Compatible with Figma Tokens plugin
+ */
+function generateFigmaTokens(styles: any): string {
+  const tokens: any = {};
+
+  // Colors
+  if (styles.cssVariables) {
+    tokens.colors = {};
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const cleanName = varName.replace('--', '').replace(/-/g, '.');
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+
+      if (lightValue && looksLikeColor(lightValue)) {
+        tokens.colors[cleanName] = {
+          value: lightValue,
+          type: 'color'
+        };
+      }
+    }
+  }
+
+  // Typography
+  if (styles.typographyContext) {
+    tokens.typography = {};
+
+    // Headings
+    for (const [tag, data] of Object.entries(styles.typographyContext.headings || {})) {
+      const heading = data as any;
+      tokens.typography[tag] = {
+        fontSize: { value: heading.fontSize, type: 'fontSizes' },
+        fontWeight: { value: heading.fontWeight, type: 'fontWeights' },
+        lineHeight: { value: heading.lineHeight, type: 'lineHeights' }
+      };
+    }
+  }
+
+  // Spacing
+  if (styles.layoutPatterns?.spacingScale) {
+    tokens.spacing = {};
+    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any, idx: number) => {
+      tokens.spacing[`spacing-${idx}`] = {
+        value: spacing.value,
+        type: 'spacing'
+      };
+    });
+  }
+
+  // Shadows
+  if (styles.shadows?.elevationLevels) {
+    tokens.shadows = {};
+    styles.shadows.elevationLevels.forEach((level: any) => {
+      tokens.shadows[`elevation-${level.elevationLevel}`] = {
+        value: level.representative,
+        type: 'boxShadow'
+      };
+    });
+  }
+
+  return JSON.stringify(tokens, null, 2);
+}
+
+/**
+ * Generates Tailwind CSS config format
+ */
+function generateTailwindConfig(styles: any): string {
+  let config = `/** @type {import('tailwindcss').Config} */\n`;
+  config += `module.exports = {\n`;
+  config += `  theme: {\n`;
+  config += `    extend: {\n`;
+
+  // Colors
+  config += `      colors: {\n`;
+  if (styles.cssVariables) {
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const cleanName = varName.replace('--', '').replace(/-/g, '-');
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+
+      if (lightValue && looksLikeColor(lightValue)) {
+        config += `        '${cleanName}': '${lightValue}',\n`;
+      }
+    }
+  }
+  config += `      },\n`;
+
+  // Font sizes
+  if (styles.typographyContext?.typeScale) {
+    config += `      fontSize: {\n`;
+    styles.typographyContext.typeScale.scale.forEach((size: number, idx: number) => {
+      config += `        '${idx === 0 ? 'xs' : idx === 1 ? 'sm' : idx === 2 ? 'base' : idx === 3 ? 'lg' : idx === 4 ? 'xl' : `${idx - 2}xl`}': '${size}px',\n`;
+    });
+    config += `      },\n`;
+  }
+
+  // Spacing
+  if (styles.layoutPatterns?.spacingScale) {
+    config += `      spacing: {\n`;
+    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any) => {
+      const value = parseInt(spacing.value);
+      config += `        '${value}': '${spacing.value}',\n`;
+    });
+    config += `      },\n`;
+  }
+
+  // Box shadow
+  if (styles.shadows?.elevationLevels) {
+    config += `      boxShadow: {\n`;
+    styles.shadows.elevationLevels.forEach((level: any) => {
+      config += `        '${level.name.toLowerCase()}': '${level.representative}',\n`;
+    });
+    config += `      },\n`;
+  }
+
+  config += `    },\n`;
+  config += `  },\n`;
+  config += `  plugins: [],\n`;
+  config += `}\n`;
+
+  return config;
+}
+
+/**
+ * Generates CSS custom properties format
+ */
+function generateCSSVariables(styles: any): string {
+  let css = `/**\n * Design System CSS Custom Properties\n * Generated by Yoink\n */\n\n`;
+
+  css += `:root {\n`;
+  css += `  /* === Colors === */\n`;
+
+  // Colors from CSS variables
+  if (styles.cssVariables) {
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+
+      if (lightValue && looksLikeColor(lightValue)) {
+        css += `  ${varName}: ${lightValue};\n`;
+      }
+    }
+  }
+
+  // Typography
+  if (styles.typographyContext?.typeScale) {
+    css += `\n  /* === Typography === */\n`;
+    css += `  --font-size-base: ${styles.typographyContext.typeScale.baseSize}px;\n`;
+    css += `  --type-scale-ratio: ${styles.typographyContext.typeScale.ratio};\n\n`;
+
+    styles.typographyContext.typeScale.scale.forEach((size: number, idx: number) => {
+      css += `  --font-size-${idx}: ${size}px;\n`;
+    });
+  }
+
+  // Spacing
+  if (styles.layoutPatterns?.spacingScale) {
+    css += `\n  /* === Spacing === */\n`;
+    css += `  --spacing-base: ${styles.layoutPatterns.spacingScale.baseUnit};\n\n`;
+
+    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any, idx: number) => {
+      css += `  --spacing-${idx}: ${spacing.value};\n`;
+    });
+  }
+
+  // Shadows
+  if (styles.shadows?.elevationLevels) {
+    css += `\n  /* === Shadows === */\n`;
+    styles.shadows.elevationLevels.forEach((level: any) => {
+      css += `  --shadow-${level.name.toLowerCase()}: ${level.representative};\n`;
+    });
+  }
+
+  css += `}\n`;
+
+  return css;
+}
+
+/**
+ * Generates JavaScript/TypeScript tokens format
+ */
+function generateJSTokens(styles: any): string {
+  let js = `/**\n * Design System Tokens\n * Generated by Yoink\n */\n\n`;
+
+  js += `export const tokens = {\n`;
+
+  // Colors
+  js += `  colors: {\n`;
+  if (styles.cssVariables) {
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const cleanName = varName.replace('--', '').replace(/-/g, '_');
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+
+      if (lightValue && looksLikeColor(lightValue)) {
+        js += `    ${cleanName}: '${lightValue}',\n`;
+      }
+    }
+  }
+  js += `  },\n\n`;
+
+  // Typography
+  if (styles.typographyContext?.typeScale) {
+    js += `  typography: {\n`;
+    js += `    baseSize: ${styles.typographyContext.typeScale.baseSize},\n`;
+    js += `    scaleRatio: ${styles.typographyContext.typeScale.ratio},\n`;
+    js += `    sizes: [\n`;
+    styles.typographyContext.typeScale.scale.forEach((size: number) => {
+      js += `      ${size},\n`;
+    });
+    js += `    ],\n`;
+    js += `  },\n\n`;
+  }
+
+  // Spacing
+  if (styles.layoutPatterns?.spacingScale) {
+    js += `  spacing: {\n`;
+    js += `    baseUnit: '${styles.layoutPatterns.spacingScale.baseUnit}',\n`;
+    js += `    scale: [\n`;
+    styles.layoutPatterns.spacingScale.spacingScale.forEach((spacing: any) => {
+      js += `      '${spacing.value}',\n`;
+    });
+    js += `    ],\n`;
+    js += `  },\n\n`;
+  }
+
+  // Shadows
+  if (styles.shadows?.elevationLevels) {
+    js += `  shadows: {\n`;
+    styles.shadows.elevationLevels.forEach((level: any) => {
+      js += `    ${level.name.toLowerCase()}: '${level.representative}',\n`;
+    });
+    js += `  },\n`;
+  }
+
+  js += `};\n\n`;
+  js += `export default tokens;\n`;
+
+  return js;
 }
 
 /**
