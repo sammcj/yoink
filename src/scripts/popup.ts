@@ -380,53 +380,235 @@ function generateYAML(styles: any): string {
     yaml += `\n`;
   }
 
+  // Icon System
+  if (styles.icons) {
+    yaml += `icons:\n`;
+    if (styles.icons.commonSizes && styles.icons.commonSizes.length > 0) {
+      yaml += `  common-sizes:\n`;
+      styles.icons.commonSizes.forEach((s: any) => {
+        yaml += `    - size: ${s.size}\n`;
+        yaml += `      count: ${s.count}\n`;
+      });
+    }
+
+    if (styles.icons.svgPatterns && styles.icons.svgPatterns.length > 0) {
+      yaml += `  svg-patterns:\n`;
+      styles.icons.svgPatterns.slice(0, 5).forEach((pattern: any) => {
+        yaml += `    - size: ${pattern.size}\n`;
+        if (pattern.viewBox) yaml += `      viewBox: "${pattern.viewBox}"\n`;
+        yaml += `      count: ${pattern.count}\n`;
+      });
+    }
+
+    if (styles.icons.iconFonts && styles.icons.iconFonts.length > 0) {
+      yaml += `  icon-font-sizes:\n`;
+      styles.icons.iconFonts.forEach((font: any) => {
+        yaml += `    - size: ${font.size}\n`;
+        yaml += `      count: ${font.count}\n`;
+      });
+    }
+
+    yaml += `  totals:\n`;
+    yaml += `    svg-icons: ${styles.icons.totalSvgs || 0}\n`;
+    yaml += `    icon-fonts: ${styles.icons.totalIconFonts || 0}\n`;
+    yaml += `\n`;
+  }
+
   // Components (with enhanced states)
-  if (styles.components?.buttons && styles.components.buttons.length > 0) {
+  if (styles.components) {
     yaml += `components:\n`;
-    yaml += `  buttons:\n`;
-    styles.components.buttons.slice(0, 3).forEach((btn: any) => {
-      yaml += `    - variant: ${btn.variant}\n`;
-      yaml += `      count: ${btn.count}\n`;
-      yaml += `      styles:\n`;
-      yaml += `        background: "${btn.styles.background}"\n`;
-      yaml += `        color: "${btn.styles.color}"\n`;
-      yaml += `        padding: "${btn.styles.padding}"\n`;
-      yaml += `        border-radius: ${btn.styles.borderRadius}\n`;
-      yaml += `        font-size: ${btn.styles.fontSize}\n`;
 
-      // Interactive states
-      if (btn.states) {
-        yaml += `      states:\n`;
+    // Buttons
+    if (styles.components.buttons && styles.components.buttons.length > 0) {
+      yaml += `  buttons:\n`;
+      styles.components.buttons.slice(0, 3).forEach((btn: any) => {
+        yaml += `    - variant: ${btn.variant}\n`;
+        yaml += `      count: ${btn.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${btn.styles.background}"\n`;
+        yaml += `        color: "${btn.styles.color}"\n`;
+        yaml += `        padding: "${btn.styles.padding}"\n`;
+        yaml += `        border-radius: ${btn.styles.borderRadius}\n`;
+        yaml += `        font-size: ${btn.styles.fontSize}\n`;
 
-        if (btn.states.hover) {
-          yaml += `        hover:\n`;
-          Object.entries(btn.states.hover).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+        // Interactive states
+        if (btn.states || btn.stateStyles) {
+          const states = btn.states || btn.stateStyles;
+          yaml += `      states:\n`;
+
+          if (states.hover) {
+            yaml += `        hover:\n`;
+            Object.entries(states.hover).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
+
+          if (states.focus) {
+            yaml += `        focus:\n`;
+            Object.entries(states.focus).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
+
+          if (states.active) {
+            yaml += `        active:\n`;
+            Object.entries(states.active).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
+
+          if (states.disabled) {
+            yaml += `        disabled:\n`;
+            Object.entries(states.disabled).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
         }
+      });
+    }
 
-        if (btn.states.focus) {
-          yaml += `        focus:\n`;
-          Object.entries(btn.states.focus).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+    // Cards
+    if (styles.components.cards && styles.components.cards.length > 0) {
+      yaml += `\n  cards:\n`;
+      styles.components.cards.slice(0, 3).forEach((card: any) => {
+        yaml += `    - variant: ${card.variant}\n`;
+        yaml += `      count: ${card.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${card.styles.background}"\n`;
+        yaml += `        border: "${card.styles.border}"\n`;
+        yaml += `        border-radius: ${card.styles.borderRadius}\n`;
+        yaml += `        padding: ${card.styles.padding}\n`;
+        yaml += `        box-shadow: "${card.styles.boxShadow}"\n`;
+        if (card.states) {
+          yaml += `      states:\n`;
+          if (card.states.hover) {
+            yaml += `        hover:\n`;
+            Object.entries(card.states.hover).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
         }
+      });
+    }
 
-        if (btn.states.active) {
-          yaml += `        active:\n`;
-          Object.entries(btn.states.active).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+    // Inputs
+    if (styles.components.inputs && styles.components.inputs.length > 0) {
+      yaml += `\n  inputs:\n`;
+      styles.components.inputs.slice(0, 5).forEach((input: any) => {
+        yaml += `    - type: ${input.type}\n`;
+        yaml += `      variant: ${input.variant}\n`;
+        yaml += `      count: ${input.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${input.styles.background}"\n`;
+        yaml += `        border: "${input.styles.border}"\n`;
+        yaml += `        border-radius: ${input.styles.borderRadius}\n`;
+        yaml += `        padding: ${input.styles.padding}\n`;
+        yaml += `        height: ${input.styles.height}\n`;
+        if (input.states) {
+          yaml += `      states:\n`;
+          if (input.states.focus) {
+            yaml += `        focus:\n`;
+            Object.entries(input.states.focus).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
+          if (input.states.disabled) {
+            yaml += `        disabled:\n`;
+            Object.entries(input.states.disabled).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
         }
+      });
+    }
 
-        if (btn.states.disabled) {
-          yaml += `        disabled:\n`;
-          Object.entries(btn.states.disabled).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+    // Navigation
+    if (styles.components.navigation && styles.components.navigation.length > 0) {
+      yaml += `\n  navigation:\n`;
+      styles.components.navigation.slice(0, 3).forEach((nav: any) => {
+        yaml += `    - variant: ${nav.variant}\n`;
+        yaml += `      count: ${nav.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        color: "${nav.styles.color}"\n`;
+        yaml += `        font-size: ${nav.styles.fontSize}\n`;
+        yaml += `        font-weight: ${nav.styles.fontWeight}\n`;
+        yaml += `        padding: ${nav.styles.padding}\n`;
+        if (nav.states) {
+          yaml += `      states:\n`;
+          if (nav.states.hover) {
+            yaml += `        hover:\n`;
+            Object.entries(nav.states.hover).forEach(([key, value]) => {
+              yaml += `          ${key}: "${value}"\n`;
+            });
+          }
         }
-      }
-    });
+      });
+    }
+
+    // Dropdowns
+    if (styles.components.dropdowns && styles.components.dropdowns.length > 0) {
+      yaml += `\n  dropdowns:\n`;
+      styles.components.dropdowns.forEach((dropdown: any) => {
+        yaml += `    - count: ${dropdown.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${dropdown.styles.background}"\n`;
+        yaml += `        border: "${dropdown.styles.border}"\n`;
+        yaml += `        border-radius: ${dropdown.styles.borderRadius}\n`;
+        yaml += `        box-shadow: "${dropdown.styles.boxShadow}"\n`;
+        yaml += `        min-width: ${dropdown.styles.minWidth}\n`;
+      });
+    }
+
+    // Tables
+    if (styles.components.tables && styles.components.tables.length > 0) {
+      yaml += `\n  tables:\n`;
+      styles.components.tables.forEach((table: any) => {
+        yaml += `    - count: ${table.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${table.styles.background}"\n`;
+        yaml += `        border: "${table.styles.border}"\n`;
+        if (table.styles.header) {
+          yaml += `        header:\n`;
+          yaml += `          background: "${table.styles.header.background}"\n`;
+          yaml += `          color: "${table.styles.header.color}"\n`;
+          yaml += `          font-weight: ${table.styles.header.fontWeight}\n`;
+        }
+        if (table.styles.cell) {
+          yaml += `        cell:\n`;
+          yaml += `          padding: ${table.styles.cell.padding}\n`;
+          yaml += `          border-bottom: "${table.styles.cell.borderBottom}"\n`;
+        }
+      });
+    }
+
+    // Modals
+    if (styles.components.modals && styles.components.modals.length > 0) {
+      yaml += `\n  modals:\n`;
+      styles.components.modals.forEach((modal: any) => {
+        yaml += `    - count: ${modal.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${modal.styles.background}"\n`;
+        yaml += `        border-radius: ${modal.styles.borderRadius}\n`;
+        yaml += `        padding: ${modal.styles.padding}\n`;
+        yaml += `        box-shadow: "${modal.styles.boxShadow}"\n`;
+        yaml += `        max-width: ${modal.styles.maxWidth}\n`;
+        yaml += `        z-index: ${modal.styles.zIndex}\n`;
+      });
+    }
+
+    // Tooltips
+    if (styles.components.tooltips && styles.components.tooltips.length > 0) {
+      yaml += `\n  tooltips:\n`;
+      styles.components.tooltips.forEach((tooltip: any) => {
+        yaml += `    - count: ${tooltip.count}\n`;
+        yaml += `      styles:\n`;
+        yaml += `        background: "${tooltip.styles.background}"\n`;
+        yaml += `        color: "${tooltip.styles.color}"\n`;
+        yaml += `        border-radius: ${tooltip.styles.borderRadius}\n`;
+        yaml += `        padding: ${tooltip.styles.padding}\n`;
+        yaml += `        font-size: ${tooltip.styles.fontSize}\n`;
+      });
+    }
   }
 
   return yaml;

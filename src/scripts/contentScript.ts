@@ -50,7 +50,8 @@ function extractStyles(includeComponents: boolean = true): any {
     fonts: extractFonts(),
     borderRadius: extractBorderRadius(),
     shadows: extractShadows(),
-    layout: extractLayoutStructure()
+    layout: extractLayoutStructure(),
+    icons: extractIcons()
   };
 
   // Add component patterns and context if requested
@@ -943,7 +944,11 @@ function extractComponents(): any {
     cards: extractCards(),
     inputs: extractInputs(),
     navigation: extractNavigation(),
-    headings: extractHeadings()
+    headings: extractHeadings(),
+    dropdowns: extractDropdowns(),
+    tables: extractTables(),
+    modals: extractModals(),
+    tooltips: extractTooltips()
   };
 }
 
@@ -1530,24 +1535,25 @@ function extractButtons(): any[] {
 }
 
 /**
- * Extracts card components
+ * Extracts card components with interactive states
  */
 function extractCards(): any[] {
   const cards: any[] = [];
   const seen = new Map<string, any>();
 
   // Look for elements that look like cards
-  const cardSelectors = '[class*="card"], article, [class*="panel"], [class*="box"]';
+  const cardSelectors = '[class*="card"], article, [class*="panel"], [class*="box"], [class*="item"]';
   const elements = document.querySelectorAll(cardSelectors);
 
   elements.forEach(card => {
     const styles = getComputedStyle(card);
 
-    // Filter: must have border or shadow to be considered a card
+    // Filter: must have border or shadow or background to be considered a card
     const hasBorder = styles.border !== 'none' && styles.borderWidth !== '0px';
     const hasShadow = styles.boxShadow !== 'none';
+    const hasBackground = styles.backgroundColor !== 'rgba(0, 0, 0, 0)' && styles.backgroundColor !== 'transparent';
 
-    if (!hasBorder && !hasShadow) return;
+    if (!hasBorder && !hasShadow && !hasBackground) return;
 
     const signature = createStyleSignature(card as HTMLElement);
 
@@ -1561,15 +1567,18 @@ function extractCards(): any[] {
         borderRadius: styles.borderRadius,
         padding: styles.padding,
         boxShadow: styles.boxShadow,
-        margin: styles.margin
+        margin: styles.margin,
+        display: styles.display,
+        width: styles.width
       };
 
       const variant: any = {
-        html: (card as HTMLElement).outerHTML.substring(0, 500),
+        html: getCleanHTML(card as HTMLElement),
         classes: (card as HTMLElement).className || '',
         styles: componentStyles,
-        variant: 'card',
-        count: 1
+        variant: inferCardVariant(card as HTMLElement),
+        count: 1,
+        states: extractStateStyles(card as HTMLElement)
       };
 
       cards.push(variant);
@@ -1577,11 +1586,25 @@ function extractCards(): any[] {
     }
   });
 
-  return cards.sort((a, b) => b.count - a.count).slice(0, 3);
+  return cards.sort((a, b) => b.count - a.count).slice(0, 5);
 }
 
 /**
- * Extracts form input components
+ * Infers card variant from classes or structure
+ */
+function inferCardVariant(card: HTMLElement): string {
+  const className = card.className.toLowerCase();
+
+  if (className.includes('elevated') || className.includes('raised')) return 'elevated';
+  if (className.includes('flat') || className.includes('outlined')) return 'flat';
+  if (className.includes('interactive') || className.includes('clickable')) return 'interactive';
+  if (card.querySelector('img, video')) return 'media';
+
+  return 'default';
+}
+
+/**
+ * Extracts form input components with states and types
  */
 function extractInputs(): any[] {
   const inputs: any[] = [];
@@ -1592,7 +1615,10 @@ function extractInputs(): any[] {
 
   elements.forEach(input => {
     const styles = getComputedStyle(input);
-    const signature = createStyleSignature(input as HTMLElement);
+    const el = input as HTMLElement;
+    const inputType = (input as HTMLInputElement).type || el.tagName.toLowerCase();
+
+    const signature = createStyleSignature(el);
 
     if (seen.has(signature)) {
       const existing = seen.get(signature)!;
@@ -1605,15 +1631,18 @@ function extractInputs(): any[] {
         borderRadius: styles.borderRadius,
         padding: styles.padding,
         fontSize: styles.fontSize,
-        height: styles.height
+        height: styles.height,
+        width: styles.width
       };
 
       const variant: any = {
-        html: (input as HTMLElement).outerHTML.substring(0, 500),
-        classes: (input as HTMLElement).className || '',
+        html: getCleanHTML(el),
+        classes: el.className || '',
         styles: componentStyles,
-        variant: (input as HTMLElement).tagName.toLowerCase(),
-        count: 1
+        type: inputType,
+        variant: inferInputVariant(el, inputType),
+        count: 1,
+        states: extractStateStyles(el)
       };
 
       inputs.push(variant);
@@ -1621,22 +1650,41 @@ function extractInputs(): any[] {
     }
   });
 
-  return inputs.sort((a, b) => b.count - a.count).slice(0, 3);
+  return inputs.sort((a, b) => b.count - a.count).slice(0, 5);
 }
 
 /**
- * Extracts navigation components
+ * Infers input variant from type and classes
+ */
+function inferInputVariant(input: HTMLElement, type: string): string {
+  const className = input.className.toLowerCase();
+
+  if (type === 'checkbox') return 'checkbox';
+  if (type === 'radio') return 'radio';
+  if (type === 'select' || input.tagName.toLowerCase() === 'select') return 'select';
+  if (type === 'textarea' || input.tagName.toLowerCase() === 'textarea') return 'textarea';
+  if (type === 'search') return 'search';
+
+  if (className.includes('error') || className.includes('invalid')) return 'text-error';
+  if (className.includes('success') || className.includes('valid')) return 'text-success';
+
+  return 'text';
+}
+
+/**
+ * Extracts navigation components with active states
  */
 function extractNavigation(): any[] {
   const navItems: any[] = [];
   const seen = new Map<string, any>();
 
-  const navSelectors = 'nav a, [role="navigation"] a, header a';
+  const navSelectors = 'nav a, [role="navigation"] a, header a, [class*="nav"] a, [class*="menu"] a';
   const elements = document.querySelectorAll(navSelectors);
 
   elements.forEach(navItem => {
     const styles = getComputedStyle(navItem);
-    const signature = createStyleSignature(navItem as HTMLElement);
+    const el = navItem as HTMLElement;
+    const signature = createStyleSignature(el);
 
     if (seen.has(signature)) {
       const existing = seen.get(signature)!;
@@ -1647,15 +1695,18 @@ function extractNavigation(): any[] {
         fontSize: styles.fontSize,
         fontWeight: styles.fontWeight,
         padding: styles.padding,
-        textDecoration: styles.textDecoration
+        textDecoration: styles.textDecoration,
+        background: styles.backgroundColor,
+        borderRadius: styles.borderRadius
       };
 
       const variant: any = {
-        html: (navItem as HTMLElement).outerHTML.substring(0, 500),
-        classes: (navItem as HTMLElement).className || '',
+        html: getCleanHTML(el),
+        classes: el.className || '',
         styles: componentStyles,
-        variant: 'nav-link',
-        count: 1
+        variant: inferNavVariant(el),
+        count: 1,
+        states: extractStateStyles(el)
       };
 
       navItems.push(variant);
@@ -1663,7 +1714,21 @@ function extractNavigation(): any[] {
     }
   });
 
-  return navItems.sort((a, b) => b.count - a.count).slice(0, 3);
+  return navItems.sort((a, b) => b.count - a.count).slice(0, 5);
+}
+
+/**
+ * Infers navigation variant from classes or attributes
+ */
+function inferNavVariant(navItem: HTMLElement): string {
+  const className = navItem.className.toLowerCase();
+  const isActive = className.includes('active') || navItem.getAttribute('aria-current') === 'page';
+
+  if (isActive) return 'active';
+  if (className.includes('primary')) return 'primary';
+  if (className.includes('secondary')) return 'secondary';
+
+  return 'default';
 }
 
 /**
@@ -1707,6 +1772,293 @@ function extractHeadings(): any[] {
   });
 
   return headings.sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Extracts dropdown/menu components
+ */
+function extractDropdowns(): any[] {
+  const dropdowns: any[] = [];
+  const seen = new Map<string, any>();
+
+  const dropdownSelectors = '[role="menu"], [role="listbox"], [class*="dropdown"], [class*="menu"][class*="list"], select, [class*="popover"]';
+  const elements = document.querySelectorAll(dropdownSelectors);
+
+  elements.forEach(dropdown => {
+    const styles = getComputedStyle(dropdown);
+    const el = dropdown as HTMLElement;
+
+    // Skip if it's a select element already captured
+    if (el.tagName.toLowerCase() === 'select') return;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        boxShadow: styles.boxShadow,
+        minWidth: styles.minWidth,
+        zIndex: styles.zIndex
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'dropdown',
+        count: 1
+      };
+
+      dropdowns.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return dropdowns.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts table components
+ */
+function extractTables(): any[] {
+  const tables: any[] = [];
+  const seen = new Map<string, any>();
+
+  const tableElements = document.querySelectorAll('table, [role="table"], [class*="table"]:not(table)');
+
+  tableElements.forEach(table => {
+    const el = table as HTMLElement;
+
+    // For non-table elements, verify they have table-like structure
+    if (el.tagName.toLowerCase() !== 'table') {
+      const hasRows = el.querySelectorAll('[role="row"], [class*="row"]').length > 2;
+      if (!hasRows) return;
+    }
+
+    const styles = getComputedStyle(el);
+    const signature = `table-${styles.borderCollapse}-${styles.backgroundColor}-${styles.border}`;
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderCollapse: styles.borderCollapse,
+        width: styles.width
+      };
+
+      // Extract header styles if present
+      const header = el.querySelector('thead, [role="rowheader"], th');
+      if (header) {
+        const headerStyles = getComputedStyle(header as HTMLElement);
+        componentStyles.header = {
+          background: headerStyles.backgroundColor,
+          color: headerStyles.color,
+          fontWeight: headerStyles.fontWeight,
+          padding: headerStyles.padding
+        };
+      }
+
+      // Extract cell styles
+      const cell = el.querySelector('td, [role="cell"]');
+      if (cell) {
+        const cellStyles = getComputedStyle(cell as HTMLElement);
+        componentStyles.cell = {
+          padding: cellStyles.padding,
+          borderBottom: cellStyles.borderBottom
+        };
+      }
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'table',
+        count: 1
+      };
+
+      tables.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return tables.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts modal/dialog components
+ */
+function extractModals(): any[] {
+  const modals: any[] = [];
+  const seen = new Map<string, any>();
+
+  const modalSelectors = '[role="dialog"], [role="alertdialog"], [class*="modal"], [class*="dialog"], [aria-modal="true"]';
+  const elements = document.querySelectorAll(modalSelectors);
+
+  elements.forEach(modal => {
+    const styles = getComputedStyle(modal);
+    const el = modal as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        boxShadow: styles.boxShadow,
+        maxWidth: styles.maxWidth,
+        zIndex: styles.zIndex,
+        position: styles.position
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'modal',
+        count: 1
+      };
+
+      modals.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return modals.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts tooltip and popover components
+ */
+function extractTooltips(): any[] {
+  const tooltips: any[] = [];
+  const seen = new Map<string, any>();
+
+  const tooltipSelectors = '[role="tooltip"], [class*="tooltip"], [class*="popover"]:not([role="menu"])';
+  const elements = document.querySelectorAll(tooltipSelectors);
+
+  elements.forEach(tooltip => {
+    const styles = getComputedStyle(tooltip);
+    const el = tooltip as HTMLElement;
+
+    const signature = createStyleSignature(el);
+
+    if (seen.has(signature)) {
+      const existing = seen.get(signature)!;
+      existing.count++;
+    } else {
+      const componentStyles: any = {
+        background: styles.backgroundColor,
+        color: styles.color,
+        border: styles.border,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding,
+        fontSize: styles.fontSize,
+        boxShadow: styles.boxShadow,
+        zIndex: styles.zIndex
+      };
+
+      const variant: any = {
+        html: getCleanHTML(el),
+        classes: el.className || '',
+        styles: componentStyles,
+        variant: 'tooltip',
+        count: 1
+      };
+
+      tooltips.push(variant);
+      seen.set(signature, variant);
+    }
+  });
+
+  return tooltips.sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/**
+ * Extracts icon system patterns
+ */
+function extractIcons(): any {
+  const icons: any = {
+    svgIcons: [],
+    iconFonts: [],
+    sizes: new Map<string, number>()
+  };
+
+  // Extract SVG icons
+  const svgs = document.querySelectorAll('svg[class*="icon"], svg[width], svg[height]');
+  const svgPatterns = new Map<string, any>();
+
+  svgs.forEach(svg => {
+    const el = svg as SVGElement;
+    const width = el.getAttribute('width') || el.getBoundingClientRect().width;
+    const height = el.getAttribute('height') || el.getBoundingClientRect().height;
+    const viewBox = el.getAttribute('viewBox');
+    const className = el.className.baseVal || '';
+
+    const size = `${Math.round(Number(width))}x${Math.round(Number(height))}`;
+    const sizeCount = icons.sizes.get(size) || 0;
+    icons.sizes.set(size, sizeCount + 1);
+
+    const signature = `${size}-${viewBox}`;
+    if (svgPatterns.has(signature)) {
+      svgPatterns.get(signature).count++;
+    } else {
+      svgPatterns.set(signature, {
+        size,
+        viewBox,
+        className,
+        count: 1
+      });
+    }
+  });
+
+  icons.svgIcons = Array.from(svgPatterns.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  // Extract icon font usage (Font Awesome, Material Icons, etc.)
+  const iconFontSelectors = '[class*="icon-"], [class*="fa-"], [class*="material-icons"], i[class*="icon"]';
+  const iconFontElements = document.querySelectorAll(iconFontSelectors);
+  const iconFontPatterns = new Map<string, number>();
+
+  iconFontElements.forEach(icon => {
+    const styles = getComputedStyle(icon);
+    const fontSize = styles.fontSize;
+    const count = iconFontPatterns.get(fontSize) || 0;
+    iconFontPatterns.set(fontSize, count + 1);
+  });
+
+  icons.iconFonts = (Array.from(iconFontPatterns.entries()) as [string, number][])
+    .map(([size, count]) => ({ size, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // Convert sizes map to array
+  const commonSizes = (Array.from(icons.sizes.entries()) as [string, number][])
+    .map(([size, count]) => ({ size, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  return {
+    svgPatterns: icons.svgIcons,
+    iconFonts: icons.iconFonts,
+    commonSizes,
+    totalSvgs: svgs.length,
+    totalIconFonts: iconFontElements.length
+  };
 }
 
 /**
