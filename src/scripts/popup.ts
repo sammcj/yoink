@@ -8,15 +8,13 @@ const scanButton = document.getElementById('scanBtn') as HTMLButtonElement;
 const copyButton = document.getElementById('copyBtn') as HTMLButtonElement;
 const downloadButton = document.getElementById('downloadBtn') as HTMLButtonElement;
 const includeComponentsCheckbox = document.getElementById('includeComponentsCheckbox') as HTMLInputElement;
-const exportFormatSelector = document.getElementById('exportFormat') as HTMLSelectElement;
 const loadingState = document.getElementById('loadingState') as HTMLDivElement;
 const resultsSection = document.getElementById('resultsSection') as HTMLDivElement;
 const errorState = document.getElementById('errorState') as HTMLDivElement;
 const markdownPreview = document.getElementById('markdownPreview') as HTMLDivElement;
 const successMessage = document.getElementById('successMessage') as HTMLDivElement;
 
-let currentExportData = '';
-let currentStyleData: any = null;
+let currentYAML = '';
 
 // Scan button click handler
 scanButton.addEventListener('click', async () => {
@@ -43,9 +41,8 @@ scanButton.addEventListener('click', async () => {
         }
 
         if (response.success && response.data) {
-          currentStyleData = response.data;
-          const exportData = generateExport(currentStyleData, exportFormatSelector.value);
-          displayExport(exportData);
+          const yaml = generateYAML(response.data);
+          displayYAML(yaml);
         } else {
           showError(response.error || 'Failed to extract styles');
         }
@@ -58,31 +55,20 @@ scanButton.addEventListener('click', async () => {
   }
 });
 
-// Format selector change handler
-exportFormatSelector.addEventListener('change', () => {
-  if (currentStyleData) {
-    const exportData = generateExport(currentStyleData, exportFormatSelector.value);
-    displayExport(exportData);
-  }
-});
-
 // Copy button click handler
 copyButton.addEventListener('click', () => {
-  navigator.clipboard.writeText(currentExportData).then(() => {
+  navigator.clipboard.writeText(currentYAML).then(() => {
     showSuccess('Copied to clipboard!');
   });
 });
 
 // Download button click handler
 downloadButton.addEventListener('click', () => {
-  const format = exportFormatSelector.value;
-  const { mimeType, extension } = getFormatDetails(format);
-
-  const blob = new Blob([currentExportData], { type: mimeType });
+  const blob = new Blob([currentYAML], { type: 'text/yaml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `design-system${extension}`;
+  a.download = 'design-system.yaml';
   a.click();
   URL.revokeObjectURL(url);
   showSuccess('Downloaded!');
@@ -107,41 +93,13 @@ function hideLoading(): void {
 }
 
 /**
- * Displays export output
+ * Displays YAML output
  */
-function displayExport(exportData: string): void {
-  currentExportData = exportData;
-  markdownPreview.textContent = exportData;
+function displayYAML(yaml: string): void {
+  currentYAML = yaml;
+  markdownPreview.textContent = yaml;
   resultsSection.classList.remove('hidden');
   errorState.classList.add('hidden');
-}
-
-/**
- * Gets format details for download
- */
-function getFormatDetails(format: string): { mimeType: string; extension: string } {
-  switch (format) {
-    case 'yaml':
-      return { mimeType: 'text/yaml', extension: '.yaml' };
-    case 'markdown':
-      return { mimeType: 'text/markdown', extension: '.md' };
-    default:
-      return { mimeType: 'text/plain', extension: '.txt' };
-  }
-}
-
-/**
- * Generates export in the specified format
- */
-function generateExport(styles: any, format: string): string {
-  switch (format) {
-    case 'yaml':
-      return generateYAML(styles);
-    case 'markdown':
-      return generateMarkdown(styles);
-    default:
-      return generateYAML(styles);
-  }
 }
 
 /**
@@ -291,18 +249,183 @@ function generateYAML(styles: any): string {
   }
   yaml += `\n`;
 
-  // Components (simplified)
+  // Layout Structure
+  if (styles.layout) {
+    yaml += `layout:\n`;
+
+    // Sidebars
+    if (styles.layout.sidebars && styles.layout.sidebars.length > 0) {
+      yaml += `  sidebars:\n`;
+      styles.layout.sidebars.forEach((sidebar: any) => {
+        yaml += `    - position: ${sidebar.position}\n`;
+        yaml += `      width: ${sidebar.width}\n`;
+        yaml += `      background: "${sidebar.backgroundColor}"\n`;
+        if (sidebar.zIndex) yaml += `      z-index: ${sidebar.zIndex}\n`;
+      });
+    }
+
+    // Fixed Elements
+    if (styles.layout.fixedElements && styles.layout.fixedElements.length > 0) {
+      yaml += `  fixed-elements:\n`;
+      styles.layout.fixedElements.slice(0, 3).forEach((el: any) => {
+        yaml += `    - width: ${el.width}\n`;
+        yaml += `      height: ${el.height}\n`;
+        yaml += `      position: { top: ${el.top}, left: ${el.left}, right: ${el.right}, bottom: ${el.bottom} }\n`;
+      });
+    }
+
+    // Containers
+    if (styles.layout.containers && styles.layout.containers.length > 0) {
+      yaml += `  containers:\n`;
+      styles.layout.containers.slice(0, 5).forEach((container: any) => {
+        yaml += `    - max-width: ${container.maxWidth}\n`;
+        yaml += `      centered: ${container.centered}\n`;
+        yaml += `      padding: ${container.padding}\n`;
+      });
+    }
+
+    // Grids
+    if (styles.layout.grids && styles.layout.grids.length > 0) {
+      yaml += `  grids:\n`;
+      styles.layout.grids.slice(0, 5).forEach((grid: any) => {
+        yaml += `    - columns: "${grid.columns}"\n`;
+        yaml += `      gap: ${grid.gap}\n`;
+        if (grid.alignItems !== 'normal') yaml += `      align-items: ${grid.alignItems}\n`;
+      });
+    }
+
+    yaml += `\n`;
+  }
+
+  // Z-Index Hierarchy
+  if (styles.zIndex) {
+    yaml += `z-index:\n`;
+    if (styles.zIndex.range) {
+      yaml += `  range: [${styles.zIndex.range.min}, ${styles.zIndex.range.max}]\n`;
+    }
+
+    if (styles.zIndex.layers) {
+      yaml += `  layers:\n`;
+
+      if (styles.zIndex.layers.base && styles.zIndex.layers.base.length > 0) {
+        yaml += `    base:  # z-index 1-10\n`;
+        styles.zIndex.layers.base.forEach((item: any) => {
+          yaml += `      - z-index: ${item.zIndex}\n`;
+          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
+        });
+      }
+
+      if (styles.zIndex.layers.dropdown && styles.zIndex.layers.dropdown.length > 0) {
+        yaml += `    dropdown:  # z-index 10-100\n`;
+        styles.zIndex.layers.dropdown.forEach((item: any) => {
+          yaml += `      - z-index: ${item.zIndex}\n`;
+          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
+        });
+      }
+
+      if (styles.zIndex.layers.modal && styles.zIndex.layers.modal.length > 0) {
+        yaml += `    modal:  # z-index 100-1000\n`;
+        styles.zIndex.layers.modal.forEach((item: any) => {
+          yaml += `      - z-index: ${item.zIndex}\n`;
+          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
+        });
+      }
+
+      if (styles.zIndex.layers.toast && styles.zIndex.layers.toast.length > 0) {
+        yaml += `    toast:  # z-index 1000+\n`;
+        styles.zIndex.layers.toast.forEach((item: any) => {
+          yaml += `      - z-index: ${item.zIndex}\n`;
+          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
+        });
+      }
+    }
+
+    yaml += `\n`;
+  }
+
+  // Animations & Transitions
+  if (styles.animations) {
+    yaml += `animations:\n`;
+
+    // Common durations
+    if (styles.animations.commonDurations && styles.animations.commonDurations.length > 0) {
+      yaml += `  durations:\n`;
+      styles.animations.commonDurations.forEach((d: any) => {
+        yaml += `    - value: ${d.duration}\n`;
+        yaml += `      usage-count: ${d.count}\n`;
+      });
+    }
+
+    // Common easings
+    if (styles.animations.commonEasings && styles.animations.commonEasings.length > 0) {
+      yaml += `  easings:\n`;
+      styles.animations.commonEasings.forEach((e: any) => {
+        yaml += `    - value: "${e.easing}"\n`;
+        yaml += `      usage-count: ${e.count}\n`;
+      });
+    }
+
+    // Transition patterns
+    if (styles.animations.transitions && styles.animations.transitions.length > 0) {
+      yaml += `  transitions:\n`;
+      styles.animations.transitions.slice(0, 10).forEach((t: any) => {
+        yaml += `    - property: ${t.property}\n`;
+        yaml += `      duration: ${t.duration}\n`;
+        yaml += `      easing: "${t.easing}"\n`;
+        if (t.delay !== '0s') yaml += `      delay: ${t.delay}\n`;
+        yaml += `      usage-count: ${t.count}\n`;
+      });
+    }
+
+    yaml += `\n`;
+  }
+
+  // Components (with enhanced states)
   if (styles.components?.buttons && styles.components.buttons.length > 0) {
     yaml += `components:\n`;
     yaml += `  buttons:\n`;
     styles.components.buttons.slice(0, 3).forEach((btn: any) => {
       yaml += `    - variant: ${btn.variant}\n`;
       yaml += `      count: ${btn.count}\n`;
-      yaml += `      background: "${btn.styles.background}"\n`;
-      yaml += `      color: "${btn.styles.color}"\n`;
-      yaml += `      padding: "${btn.styles.padding}"\n`;
-      yaml += `      border-radius: ${btn.styles.borderRadius}\n`;
-      yaml += `      font-size: ${btn.styles.fontSize}\n`;
+      yaml += `      styles:\n`;
+      yaml += `        background: "${btn.styles.background}"\n`;
+      yaml += `        color: "${btn.styles.color}"\n`;
+      yaml += `        padding: "${btn.styles.padding}"\n`;
+      yaml += `        border-radius: ${btn.styles.borderRadius}\n`;
+      yaml += `        font-size: ${btn.styles.fontSize}\n`;
+
+      // Interactive states
+      if (btn.states) {
+        yaml += `      states:\n`;
+
+        if (btn.states.hover) {
+          yaml += `        hover:\n`;
+          Object.entries(btn.states.hover).forEach(([key, value]) => {
+            yaml += `          ${key}: "${value}"\n`;
+          });
+        }
+
+        if (btn.states.focus) {
+          yaml += `        focus:\n`;
+          Object.entries(btn.states.focus).forEach(([key, value]) => {
+            yaml += `          ${key}: "${value}"\n`;
+          });
+        }
+
+        if (btn.states.active) {
+          yaml += `        active:\n`;
+          Object.entries(btn.states.active).forEach(([key, value]) => {
+            yaml += `          ${key}: "${value}"\n`;
+          });
+        }
+
+        if (btn.states.disabled) {
+          yaml += `        disabled:\n`;
+          Object.entries(btn.states.disabled).forEach(([key, value]) => {
+            yaml += `          ${key}: "${value}"\n`;
+          });
+        }
+      }
     });
   }
 

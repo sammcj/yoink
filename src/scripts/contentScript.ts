@@ -49,7 +49,8 @@ function extractStyles(includeComponents: boolean = true): any {
     colorUsage: colorData.usage,
     fonts: extractFonts(),
     borderRadius: extractBorderRadius(),
-    shadows: extractShadows()
+    shadows: extractShadows(),
+    layout: extractLayoutStructure()
   };
 
   // Add component patterns and context if requested
@@ -58,6 +59,8 @@ function extractStyles(includeComponents: boolean = true): any {
     styleData.typographyContext = extractTypographyContext();
     styleData.colorContext = extractColorContext();
     styleData.layoutPatterns = extractLayoutPatterns();
+    styleData.zIndex = extractZIndexHierarchy();
+    styleData.animations = extractAnimations();
   }
 
   return styleData;
@@ -644,6 +647,294 @@ function detectShadowPattern(groups: ShadowGroup[]): string {
 }
 
 /**
+ * Extracts layout structure patterns (fixed/sticky positioning, sidebars, containers, grids)
+ */
+function extractLayoutStructure(): any {
+  const layouts: any = {
+    fixedElements: [],
+    stickyElements: [],
+    containers: [],
+    grids: [],
+    sidebars: []
+  };
+
+  const allElements = document.querySelectorAll('*');
+  const MAX_ELEMENTS = 1000;
+  const elementsToCheck = Array.from(allElements).slice(0, MAX_ELEMENTS);
+
+  elementsToCheck.forEach(el => {
+    const element = el as HTMLElement;
+    const styles = window.getComputedStyle(element);
+    const position = styles.position;
+    const display = styles.display;
+
+    // Detect fixed positioned elements
+    if (position === 'fixed') {
+      const rect = element.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      const left = parseFloat(styles.left);
+      const right = parseFloat(styles.right);
+      const top = parseFloat(styles.top);
+      const bottom = parseFloat(styles.bottom);
+
+      // Detect sidebars (fixed, tall, on left or right edge)
+      const isSidebar = height > window.innerHeight * 0.5 &&
+                       width < window.innerWidth * 0.4 &&
+                       (left === 0 || right === 0 || left < 50 || right < 50);
+
+      if (isSidebar) {
+        layouts.sidebars.push({
+          width: `${Math.round(width)}px`,
+          position: left === 0 || left < 50 ? 'left' : 'right',
+          backgroundColor: styles.backgroundColor,
+          zIndex: styles.zIndex
+        });
+      } else {
+        layouts.fixedElements.push({
+          position: 'fixed',
+          width: `${Math.round(width)}px`,
+          height: `${Math.round(height)}px`,
+          top: isNaN(top) ? 'auto' : `${Math.round(top)}px`,
+          left: isNaN(left) ? 'auto' : `${Math.round(left)}px`,
+          right: isNaN(right) ? 'auto' : `${Math.round(right)}px`,
+          bottom: isNaN(bottom) ? 'auto' : `${Math.round(bottom)}px`,
+          zIndex: styles.zIndex
+        });
+      }
+    }
+
+    // Detect sticky positioned elements
+    if (position === 'sticky' || position === '-webkit-sticky') {
+      layouts.stickyElements.push({
+        position: 'sticky',
+        top: styles.top,
+        zIndex: styles.zIndex
+      });
+    }
+
+    // Detect main containers (high-level layout containers)
+    const maxWidth = styles.maxWidth;
+    if (maxWidth && maxWidth !== 'none' && parseFloat(maxWidth) > 600) {
+      const marginLeft = styles.marginLeft;
+      const marginRight = styles.marginRight;
+      const isCentered = marginLeft === 'auto' && marginRight === 'auto';
+
+      layouts.containers.push({
+        maxWidth,
+        centered: isCentered,
+        padding: styles.padding
+      });
+    }
+
+    // Detect grid layouts
+    if (display === 'grid') {
+      const gridTemplateColumns = styles.gridTemplateColumns;
+      const gap = styles.gap || styles.gridGap;
+
+      if (gridTemplateColumns && gridTemplateColumns !== 'none') {
+        layouts.grids.push({
+          columns: gridTemplateColumns,
+          gap: gap || '0px',
+          alignItems: styles.alignItems,
+          justifyItems: styles.justifyItems
+        });
+      }
+    }
+  });
+
+  // Deduplicate similar entries
+  layouts.sidebars = deduplicateByKey(layouts.sidebars, ['width', 'position']);
+  layouts.fixedElements = deduplicateByKey(layouts.fixedElements, ['width', 'height', 'top']);
+  layouts.stickyElements = deduplicateByKey(layouts.stickyElements, ['top']);
+  layouts.containers = deduplicateByKey(layouts.containers, ['maxWidth']);
+  layouts.grids = deduplicateByKey(layouts.grids, ['columns', 'gap']);
+
+  return layouts;
+}
+
+/**
+ * Extracts z-index hierarchy and organizes into layers
+ */
+function extractZIndexHierarchy(): any {
+  const zIndexMap = new Map<number, { elements: number; contexts: string[] }>();
+
+  const allElements = document.querySelectorAll('*');
+  const MAX_ELEMENTS = 1000;
+  const elementsToCheck = Array.from(allElements).slice(0, MAX_ELEMENTS);
+
+  elementsToCheck.forEach(el => {
+    const element = el as HTMLElement;
+    const styles = window.getComputedStyle(element);
+    const zIndex = parseInt(styles.zIndex, 10);
+
+    if (!isNaN(zIndex) && zIndex !== 0) {
+      const position = styles.position;
+
+      // z-index only works on positioned elements
+      if (position !== 'static') {
+        const existing = zIndexMap.get(zIndex) || { elements: 0, contexts: [] };
+        existing.elements += 1;
+
+        // Detect context by class names
+        const className = element.className.toString().toLowerCase();
+        if (className.includes('modal') && !existing.contexts.includes('modal')) {
+          existing.contexts.push('modal');
+        } else if (className.includes('dropdown') && !existing.contexts.includes('dropdown')) {
+          existing.contexts.push('dropdown');
+        } else if (className.includes('tooltip') && !existing.contexts.includes('tooltip')) {
+          existing.contexts.push('tooltip');
+        } else if (className.includes('toast') || className.includes('notification')) {
+          if (!existing.contexts.includes('toast')) existing.contexts.push('toast');
+        } else if (className.includes('header') || className.includes('nav')) {
+          if (!existing.contexts.includes('navigation')) existing.contexts.push('navigation');
+        } else if (className.includes('sidebar')) {
+          if (!existing.contexts.includes('sidebar')) existing.contexts.push('sidebar');
+        }
+
+        zIndexMap.set(zIndex, existing);
+      }
+    }
+  });
+
+  // Convert to sorted array
+  const hierarchy = Array.from(zIndexMap.entries())
+    .map(([zIndex, data]) => ({
+      zIndex,
+      elements: data.elements,
+      contexts: data.contexts.length > 0 ? data.contexts : ['base']
+    }))
+    .sort((a, b) => a.zIndex - b.zIndex);
+
+  // Organize into semantic layers
+  const layers: any = {
+    base: [],      // z-index 1-10
+    dropdown: [],  // z-index 10-100
+    modal: [],     // z-index 100-1000
+    toast: []      // z-index 1000+
+  };
+
+  hierarchy.forEach(item => {
+    if (item.zIndex < 10) {
+      layers.base.push(item);
+    } else if (item.zIndex < 100) {
+      layers.dropdown.push(item);
+    } else if (item.zIndex < 1000) {
+      layers.modal.push(item);
+    } else {
+      layers.toast.push(item);
+    }
+  });
+
+  return {
+    hierarchy,
+    layers,
+    range: hierarchy.length > 0 ? {
+      min: hierarchy[0].zIndex,
+      max: hierarchy[hierarchy.length - 1].zIndex
+    } : null
+  };
+}
+
+/**
+ * Extracts animations and transition patterns
+ */
+function extractAnimations(): any {
+  const transitions = new Map<string, number>();
+  const animations = new Map<string, number>();
+
+  const allElements = document.querySelectorAll('*');
+  const MAX_ELEMENTS = 1000;
+  const elementsToCheck = Array.from(allElements).slice(0, MAX_ELEMENTS);
+
+  elementsToCheck.forEach(el => {
+    const element = el as HTMLElement;
+    const styles = window.getComputedStyle(element);
+
+    // Extract transitions
+    const transition = styles.transition;
+    if (transition && transition !== 'all 0s ease 0s' && transition !== 'none') {
+      const count = transitions.get(transition) || 0;
+      transitions.set(transition, count + 1);
+    }
+
+    // Extract animations
+    const animation = styles.animation;
+    if (animation && animation !== 'none') {
+      const count = animations.get(animation) || 0;
+      animations.set(animation, count + 1);
+    }
+  });
+
+  // Parse common transition patterns
+  const transitionPatterns: any[] = [];
+  transitions.forEach((count, transition) => {
+    // Parse transition string
+    const parts = transition.split(',').map(t => t.trim());
+    parts.forEach(part => {
+      const match = part.match(/^([\w-]+)\s+([\d.]+m?s)\s+([\w-]+)(?:\s+([\d.]+m?s))?/);
+      if (match) {
+        transitionPatterns.push({
+          property: match[1],
+          duration: match[2],
+          easing: match[3],
+          delay: match[4] || '0s',
+          count
+        });
+      }
+    });
+  });
+
+  // Deduplicate and sort by count
+  const uniqueTransitions = deduplicateByKey(transitionPatterns, ['property', 'duration', 'easing'])
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
+  const uniqueAnimations = Array.from(animations.entries())
+    .map(([animation, count]) => ({ animation, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  // Extract common durations and easings
+  const durations = new Map<string, number>();
+  const easings = new Map<string, number>();
+
+  uniqueTransitions.forEach(t => {
+    const dCount = durations.get(t.duration) || 0;
+    durations.set(t.duration, dCount + t.count);
+
+    const eCount = easings.get(t.easing) || 0;
+    easings.set(t.easing, eCount + t.count);
+  });
+
+  return {
+    transitions: uniqueTransitions,
+    animations: uniqueAnimations,
+    commonDurations: Array.from(durations.entries())
+      .map(([duration, count]) => ({ duration, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5),
+    commonEasings: Array.from(easings.entries())
+      .map(([easing, count]) => ({ easing, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+  };
+}
+
+/**
+ * Helper function to deduplicate array of objects by specified keys
+ */
+function deduplicateByKey(arr: any[], keys: string[]): any[] {
+  const seen = new Set<string>();
+  return arr.filter(item => {
+    const key = keys.map(k => item[k]).join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Extracts component patterns from the page
  */
 function extractComponents(): any {
@@ -698,46 +989,133 @@ function getCleanHTML(element: HTMLElement): string {
 }
 
 /**
- * Extracts hover, focus, and disabled states from classes
+ * Extracts interactive state styles (hover, focus, active, disabled) from CSS and element
  */
 function extractStateStyles(element: HTMLElement): any {
   const states: any = {};
-  const classes = Array.from(element.classList);
 
-  // Extract hover states
-  const hoverClasses = classes.filter(c => c.includes('hover:'));
-  if (hoverClasses.length > 0) {
-    states.hover = {};
-    hoverClasses.forEach(cls => {
-      const parts = cls.split('hover:')[1];
-      if (parts.includes('bg-')) states.hover.background = parts;
-      if (parts.includes('text-')) states.hover.color = parts;
-      if (parts.includes('opacity-')) states.hover.opacity = parts;
+  // Try to get state styles from CSS rules matching this element
+  try {
+    const matchingRules = getMatchingCSSRules(element);
+
+    matchingRules.forEach(rule => {
+      const selectorText = rule.selectorText;
+
+      // Check for :hover pseudo-class
+      if (selectorText.includes(':hover')) {
+        if (!states.hover) states.hover = {};
+        const style = rule.style;
+        if (style.backgroundColor) states.hover.backgroundColor = style.backgroundColor;
+        if (style.color) states.hover.color = style.color;
+        if (style.opacity) states.hover.opacity = style.opacity;
+        if (style.transform) states.hover.transform = style.transform;
+        if (style.boxShadow) states.hover.boxShadow = style.boxShadow;
+        if (style.borderColor) states.hover.borderColor = style.borderColor;
+      }
+
+      // Check for :focus pseudo-class
+      if (selectorText.includes(':focus')) {
+        if (!states.focus) states.focus = {};
+        const style = rule.style;
+        if (style.outline) states.focus.outline = style.outline;
+        if (style.boxShadow) states.focus.boxShadow = style.boxShadow;
+        if (style.borderColor) states.focus.borderColor = style.borderColor;
+      }
+
+      // Check for :active pseudo-class
+      if (selectorText.includes(':active')) {
+        if (!states.active) states.active = {};
+        const style = rule.style;
+        if (style.backgroundColor) states.active.backgroundColor = style.backgroundColor;
+        if (style.transform) states.active.transform = style.transform;
+        if (style.boxShadow) states.active.boxShadow = style.boxShadow;
+      }
+
+      // Check for :disabled pseudo-class
+      if (selectorText.includes(':disabled')) {
+        if (!states.disabled) states.disabled = {};
+        const style = rule.style;
+        if (style.opacity) states.disabled.opacity = style.opacity;
+        if (style.cursor) states.disabled.cursor = style.cursor;
+        if (style.backgroundColor) states.disabled.backgroundColor = style.backgroundColor;
+      }
     });
+  } catch (e) {
+    // Fallback: check for Tailwind-style utility classes
+    const classes = Array.from(element.classList);
+
+    // Extract hover states
+    const hoverClasses = classes.filter(c => c.includes('hover:'));
+    if (hoverClasses.length > 0) {
+      states.hover = { utilityClasses: hoverClasses };
+    }
+
+    // Extract focus states
+    const focusClasses = classes.filter(c => c.includes('focus:'));
+    if (focusClasses.length > 0) {
+      states.focus = { utilityClasses: focusClasses };
+    }
+
+    // Extract disabled states
+    const disabledClasses = classes.filter(c => c.includes('disabled:'));
+    if (disabledClasses.length > 0) {
+      states.disabled = { utilityClasses: disabledClasses };
+    }
   }
 
-  // Extract focus states
-  const focusClasses = classes.filter(c => c.includes('focus:'));
-  if (focusClasses.length > 0) {
-    states.focus = {};
-    focusClasses.forEach(cls => {
-      const parts = cls.split('focus:')[1];
-      if (parts.includes('ring')) states.focus.ring = parts;
-      if (parts.includes('outline')) states.focus.outline = parts;
-    });
-  }
-
-  // Extract disabled states
-  const disabledClasses = classes.filter(c => c.includes('disabled:'));
-  if (disabledClasses.length > 0) {
-    states.disabled = {};
-    disabledClasses.forEach(cls => {
-      const parts = cls.split('disabled:')[1];
-      states.disabled[parts] = true;
-    });
+  // Check if element is actually disabled
+  if (element.hasAttribute('disabled')) {
+    if (!states.disabled) states.disabled = {};
+    states.disabled.isDisabled = true;
   }
 
   return Object.keys(states).length > 0 ? states : undefined;
+}
+
+/**
+ * Get matching CSS rules for an element (including pseudo-classes)
+ */
+function getMatchingCSSRules(element: HTMLElement): CSSStyleRule[] {
+  const rules: CSSStyleRule[] = [];
+
+  try {
+    const sheets = Array.from(document.styleSheets);
+
+    sheets.forEach(sheet => {
+      try {
+        const cssRules = Array.from(sheet.cssRules || sheet.rules || []);
+
+        cssRules.forEach(rule => {
+          if (rule instanceof CSSStyleRule) {
+            const selectorText = rule.selectorText;
+
+            // Check if selector matches this element (ignoring pseudo-classes for matching)
+            const baseSelector = selectorText.replace(/:(hover|focus|active|disabled|visited|checked)/g, '');
+
+            try {
+              if (element.matches(baseSelector)) {
+                // Include rules with pseudo-classes
+                if (selectorText.includes(':hover') ||
+                    selectorText.includes(':focus') ||
+                    selectorText.includes(':active') ||
+                    selectorText.includes(':disabled')) {
+                  rules.push(rule);
+                }
+              }
+            } catch (e) {
+              // Invalid selector, skip
+            }
+          }
+        });
+      } catch (e) {
+        // Cross-origin stylesheet, skip
+      }
+    });
+  } catch (e) {
+    // Error accessing stylesheets
+  }
+
+  return rules;
 }
 
 /**
