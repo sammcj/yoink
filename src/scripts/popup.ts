@@ -166,8 +166,14 @@ function generateMarkdown(styles: any): string {
     markdown += generateFontsSection(styles.fonts);
   }
 
-  if (styles.shadows.length > 0) {
-    markdown += generateShadowsSection(styles.shadows);
+  // Handle both old (array) and new (ShadowSystem object) shadow formats
+  if (styles.shadows) {
+    if (Array.isArray(styles.shadows) && styles.shadows.length > 0) {
+      markdown += generateShadowsSection(styles.shadows);
+    } else if (typeof styles.shadows === 'object' && !Array.isArray(styles.shadows)) {
+      // New ShadowSystem format
+      markdown += generateShadowsSection(styles.shadows);
+    }
   }
 
   markdown += `\n---\n\n## 📋 Usage Notes\n\n`;
@@ -572,17 +578,103 @@ function generateFontsSection(fonts: string[]): string {
 }
 
 /**
- * Generates shadows section
+ * Generates elevation/shadow system section
  */
-function generateShadowsSection(shadows: string[]): string {
-  let section = `## 🌑 Shadows\n\n`;
+function generateShadowsSection(shadowSystem: any): string {
+  let section = `## 🌑 Elevation Scale (Shadows)\n\n`;
 
-  shadows.forEach((shadow, index) => {
-    section += `- **Shadow ${index + 1}**: \`${shadow}\`\n`;
+  // Check if we have the new shadow system structure
+  if (!shadowSystem || typeof shadowSystem === 'string' || Array.isArray(shadowSystem)) {
+    // Fallback for old format (array of shadow strings)
+    const shadows = Array.isArray(shadowSystem) ? shadowSystem : [];
+    if (shadows.length === 0) {
+      section += `_No shadows detected on this page._\n\n`;
+      return section;
+    }
+
+    shadows.forEach((shadow, index) => {
+      section += `- **Shadow ${index + 1}**: \`${shadow}\`\n`;
+    });
+    section += `\n`;
+    return section;
+  }
+
+  // New shadow system format
+  const { elevationLevels, pattern, totalUniqueShadows } = shadowSystem;
+
+  if (!elevationLevels || elevationLevels.length === 0) {
+    section += `_No shadows detected on this page._\n\n`;
+    return section;
+  }
+
+  // System overview
+  section += `**Pattern Detected:** ${pattern}\n`;
+  section += `**Total Unique Shadows:** ${totalUniqueShadows}\n`;
+  section += `**Elevation Levels:** ${elevationLevels.length}\n\n`;
+
+  section += `### Elevation Levels\n\n`;
+
+  // Display each elevation level
+  elevationLevels.forEach((level: any) => {
+    const emoji = getElevationEmoji(level.elevationLevel);
+    section += `#### ${emoji} Level ${level.elevationLevel}: ${level.name}\n\n`;
+
+    section += `**Usage:** ${level.count} element${level.count !== 1 ? 's' : ''}\n\n`;
+
+    // Show representative shadow
+    section += `**CSS:**\n\`\`\`css\n`;
+    section += `box-shadow: ${level.representative};\n`;
+    section += `\`\`\`\n\n`;
+
+    // Show parsed details
+    if (level.shadows && level.shadows.length > 0) {
+      const shadow = level.shadows[0];
+      section += `**Details:**\n`;
+      section += `- Blur: \`${shadow.blur}px\`\n`;
+      section += `- Offset: \`${shadow.offsetX}px ${shadow.offsetY}px\`\n`;
+      if (shadow.spread !== 0) {
+        section += `- Spread: \`${shadow.spread}px\`\n`;
+      }
+      section += `- Color: \`${shadow.color}\`\n`;
+      if (shadow.inset) {
+        section += `- Inset: Yes\n`;
+      }
+      section += `\n`;
+    }
+
+    // Show variants if multiple similar shadows exist
+    if (level.shadows.length > 1) {
+      section += `<details>\n`;
+      section += `<summary>📊 ${level.shadows.length - 1} similar variant${level.shadows.length > 2 ? 's' : ''} (click to expand)</summary>\n\n`;
+
+      level.shadows.slice(1).forEach((shadow: any, idx: number) => {
+        section += `**Variant ${idx + 1}:**\n`;
+        section += `\`\`\`css\nbox-shadow: ${shadow.raw};\n\`\`\`\n`;
+      });
+
+      section += `</details>\n\n`;
+    }
   });
 
-  section += `\n`;
+  // Usage recommendations
+  section += `### 💡 Usage Recommendations\n\n`;
+  section += `- **Level 0 (None)**: Default state, flat elements\n`;
+  section += `- **Level 1 (Subtle)**: Hover states, slight elevation\n`;
+  section += `- **Level 2 (Moderate)**: Cards, buttons, raised elements\n`;
+  section += `- **Level 3 (Strong)**: Dropdowns, popovers, floating panels\n`;
+  section += `- **Level 4 (Heavy)**: Modals, dialogs, important overlays\n`;
+  section += `- **Level 5 (Extra Heavy)**: Full-page overlays, high-priority alerts\n\n`;
+
+  section += `---\n\n`;
   return section;
+}
+
+/**
+ * Gets emoji for elevation level
+ */
+function getElevationEmoji(level: number): string {
+  const emojis = ['⚪', '🔵', '🟢', '🟡', '🟠', '🔴'];
+  return emojis[level] || '⚫';
 }
 
 /**
