@@ -150,6 +150,39 @@ function generateDOMYAML(node: any, indentLevel: number): string {
     yaml += `${indent}dimensions: { width: ${node.dimensions.width}px, height: ${node.dimensions.height}px }\n`;
   }
 
+  // Semantic attributes
+  if (node.href) {
+    yaml += `${indent}href: "${node.href}"\n`;
+  }
+
+  if (node.src) {
+    yaml += `${indent}src: "${node.src}"\n`;
+  }
+
+  if (node.alt) {
+    yaml += `${indent}alt: "${node.alt}"\n`;
+  }
+
+  if (node.inputType) {
+    yaml += `${indent}inputType: ${node.inputType}\n`;
+  }
+
+  if (node.placeholder) {
+    yaml += `${indent}placeholder: "${node.placeholder}"\n`;
+  }
+
+  if (node.buttonType) {
+    yaml += `${indent}buttonType: ${node.buttonType}\n`;
+  }
+
+  if (node.tableHeaders) {
+    yaml += `${indent}tableHeaders: [${node.tableHeaders.join(', ')}]\n`;
+  }
+
+  if (node.tableRows) {
+    yaml += `${indent}tableRows: ${node.tableRows}\n`;
+  }
+
   if (node.text) {
     yaml += `${indent}text: "${node.text}"\n`;
   }
