@@ -2007,35 +2007,71 @@ function extractDropdowns(): any[] {
 }
 
 /**
- * Extracts table components
+ * Extracts table components - enhanced to detect inline styles and virtualized tables (Attio, etc.)
  */
 function extractTables(): any[] {
   const tables: any[] = [];
   const seen = new Map<string, any>();
+  const candidates = new Set<Element>();
 
-  // Expanded selectors to catch virtualized tables, grids, and data lists
-  const tableElements = document.querySelectorAll('table, [role="table"], [role="grid"], [role="treegrid"], [class*="table"]:not(table), [class*="data-grid"], [class*="datagrid"], [data-table], [data-grid]');
+  // Strategy 1: Standard semantic selectors
+  const standardElements = document.querySelectorAll('table, [role="table"], [role="grid"], [role="treegrid"], [class*="table"]:not(table), [class*="data-grid"], [class*="datagrid"], [data-table], [data-grid]');
+  standardElements.forEach(el => candidates.add(el));
 
-  tableElements.forEach(table => {
+  // Strategy 2: Radix UI scroll areas (common in Attio)
+  const radixScrollAreas = document.querySelectorAll('[data-radix-scroll-area-viewport]');
+  radixScrollAreas.forEach(scrollArea => {
+    // Look for display:table inside
+    const innerTable = scrollArea.querySelector('[style*="display"]');
+    if (innerTable) {
+      const styleAttr = innerTable.getAttribute('style') || '';
+      if (styleAttr.includes('display: table') || styleAttr.includes('display:table')) {
+        candidates.add(innerTable);
+      }
+    }
+  });
+
+  // Strategy 3: CRITICAL - Scan divs for inline styles with display:table or display:grid
+  const divsWithStyle = document.querySelectorAll('div[style*="display"]');
+  divsWithStyle.forEach(div => {
+    const styleAttr = div.getAttribute('style') || '';
+    if (styleAttr.includes('display: table') || styleAttr.includes('display:table') ||
+        styleAttr.includes('display: grid') || styleAttr.includes('display:grid')) {
+      candidates.add(div);
+    }
+  });
+
+  // Process all candidates
+  candidates.forEach(table => {
     const el = table as HTMLElement;
 
     // For non-table elements, verify they have table-like structure
     if (el.tagName.toLowerCase() !== 'table') {
-      // Check for rows using multiple patterns (lowered threshold to 1)
+      // Check for rows using multiple patterns
       const rowSelectors = '[role="row"], [class*="row"], [data-row], [class*="grid-row"], [class*="table-row"]';
       const rows = el.querySelectorAll(rowSelectors);
 
-      // Also check if it's a grid layout with repeated children (virtualized table pattern)
+      // Check computed styles (this will catch inline styles too)
       const styles = getComputedStyle(el);
+      const isTableDisplay = styles.display === 'table' || styles.display === 'inline-table';
       const isGridLayout = styles.display === 'grid' || styles.display === 'inline-grid';
       const hasMultipleChildren = el.children.length > 3;
 
-      if (rows.length === 0 && !isGridLayout) return;
-      if (rows.length === 0 && isGridLayout && !hasMultipleChildren) return;
+      // Check for virtualization pattern (many absolutely positioned children with transforms)
+      const absoluteChildren = Array.from(el.children).filter(child => {
+        const childStyles = getComputedStyle(child as HTMLElement);
+        const hasTransform = childStyles.transform && childStyles.transform !== 'none';
+        return (childStyles.position === 'absolute' || childStyles.position === 'fixed') && hasTransform;
+      });
+      const isVirtualized = absoluteChildren.length > 5;
+
+      // Skip if it doesn't look like a table at all
+      if (!isTableDisplay && !isGridLayout && rows.length === 0 && !isVirtualized) return;
+      if (isGridLayout && !hasMultipleChildren && rows.length === 0 && !isVirtualized) return;
     }
 
     const styles = getComputedStyle(el);
-    const signature = `table-${styles.borderCollapse}-${styles.backgroundColor}-${styles.border}`;
+    const signature = `table-${styles.display}-${styles.backgroundColor}-${styles.border}-${el.children.length}`;
 
     if (seen.has(signature)) {
       const existing = seen.get(signature)!;
@@ -2045,7 +2081,8 @@ function extractTables(): any[] {
         background: styles.backgroundColor,
         border: styles.border,
         borderCollapse: styles.borderCollapse,
-        width: styles.width
+        width: styles.width,
+        display: styles.display
       };
 
       // Extract header styles if present (expanded selectors)
@@ -2083,7 +2120,7 @@ function extractTables(): any[] {
     }
   });
 
-  return tables.sort((a, b) => b.count - a.count).slice(0, 10); // Increased to capture more table variants
+  return tables.sort((a, b) => b.count - a.count).slice(0, 10);
 }
 
 /**
