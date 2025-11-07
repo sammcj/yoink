@@ -4653,7 +4653,11 @@ function extractDOMTree(): any {
       let textContent = '';
       for (const child of Array.from(el.childNodes)) {
         if (child.nodeType === Node.TEXT_NODE) {
-          textContent += child.textContent?.trim() || '';
+          const text = child.textContent?.trim() || '';
+          // Skip single-character text nodes (usually icon letters)
+          if (text.length > 2) {
+            textContent += text;
+          }
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           const childEl = child as Element;
           const childTag = childEl.tagName.toLowerCase();
@@ -4661,7 +4665,10 @@ function extractDOMTree(): any {
           if (childTag !== 'svg' &&
               !childEl.className.toString().match(/icon|svg|emoji|glyph/i)) {
             const childText = childEl.textContent?.trim();
-            if (childText) textContent += ' ' + childText;
+            // Skip very short text (1-2 chars) as it's usually icon letters/symbols
+            if (childText && childText.length > 2) {
+              textContent += ' ' + childText;
+            }
           }
         }
       }
