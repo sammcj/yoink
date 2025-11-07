@@ -67,6 +67,7 @@ function extractStyles(includeComponents: boolean = true): any {
     styleData.componentComposition = extractComponentComposition();
     styleData.zIndex = extractZIndexHierarchy();
     styleData.animations = extractAnimations();
+    styleData.domStructure = extractDOMTree();
   }
 
   return styleData;
@@ -4440,4 +4441,104 @@ function extractBreakpoints(): number[] {
   }
 
   return Array.from(breakpoints).sort((a, b) => a - b);
+}
+
+/**
+ * Extracts simplified DOM tree structure for AI consumption
+ * Returns hierarchical component structure with semantic info
+ */
+function extractDOMTree(): any {
+  const maxDepth = 8; // Limit depth to avoid huge trees
+  const maxChildren = 10; // Limit children per node
+
+  function isVisible(el: Element): boolean {
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' &&
+           style.visibility !== 'hidden' &&
+           style.opacity !== '0';
+  }
+
+  function shouldSkipElement(el: Element): boolean {
+    const tagName = el.tagName.toLowerCase();
+    // Skip script, style, and other non-visual elements
+    return ['script', 'style', 'link', 'meta', 'noscript'].includes(tagName);
+  }
+
+  function extractNode(el: Element, depth: number): any | null {
+    if (depth > maxDepth || shouldSkipElement(el) || !isVisible(el)) {
+      return null;
+    }
+
+    const tagName = el.tagName.toLowerCase();
+    const classList = Array.from(el.classList).slice(0, 5); // Limit class list
+    const role = el.getAttribute('role') || el.getAttribute('aria-label') || undefined;
+    const computed = window.getComputedStyle(el);
+
+    const node: any = {
+      tag: tagName,
+      ...(classList.length > 0 && { classes: classList }),
+      ...(role && { role })
+    };
+
+    // Add layout info for major layout elements
+    if (['nav', 'aside', 'main', 'header', 'footer', 'section'].includes(tagName)) {
+      const rect = el.getBoundingClientRect();
+      node.dimensions = {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+    }
+
+    // Add display type for flex/grid containers
+    if (computed.display === 'flex' || computed.display === 'inline-flex') {
+      node.layout = 'flexbox';
+    } else if (computed.display === 'grid' || computed.display === 'inline-grid') {
+      node.layout = 'grid';
+    }
+
+    // Extract text content for text nodes (limit length)
+    const textContent = el.textContent?.trim();
+    if (textContent && textContent.length > 0 && textContent.length < 100) {
+      // Only include direct text, not from children
+      let directText = '';
+      for (const child of Array.from(el.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          directText += child.textContent?.trim() || '';
+        }
+      }
+      if (directText.length > 0 && directText.length < 50) {
+        node.text = directText.substring(0, 50);
+      }
+    }
+
+    // Recursively extract children
+    const children: any[] = [];
+    const childElements = Array.from(el.children).slice(0, maxChildren);
+
+    for (const child of childElements) {
+      const childNode = extractNode(child, depth + 1);
+      if (childNode) {
+        children.push(childNode);
+      }
+    }
+
+    if (children.length > 0) {
+      node.children = children;
+    }
+
+    return node;
+  }
+
+  // Start from body or main content area
+  const body = document.body;
+  const tree = extractNode(body, 0);
+
+  return {
+    url: window.location.href,
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight
+    },
+    tree
+  };
 }

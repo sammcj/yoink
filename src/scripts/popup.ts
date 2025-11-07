@@ -15,14 +15,10 @@ const markdownPreview = document.getElementById('markdownPreview') as HTMLDivEle
 const successMessage = document.getElementById('successMessage') as HTMLDivElement;
 
 let currentYAML = '';
-let screenshotData: { base64: string; format: string; viewport: string } | null = null;
 
 // Scan button click handler
 scanButton.addEventListener('click', async () => {
   showLoading();
-
-  // Clear previous screenshot data
-  screenshotData = null;
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -59,157 +55,24 @@ scanButton.addEventListener('click', async () => {
   }
 });
 
-// Copy button click handler - always captures screenshot
-copyButton.addEventListener('click', async () => {
-  try {
-    showSuccess('Capturing screenshot...');
-    await captureScreenshot();
-
-    const yamlWithScreenshot = screenshotData
-      ? generateYAMLWithScreenshot(currentYAML, screenshotData)
-      : currentYAML;
-
-    await navigator.clipboard.writeText(yamlWithScreenshot);
-    showSuccess('Copied to clipboard with screenshot!');
-  } catch (error) {
-    console.error('Copy failed:', error);
-    // Fallback: copy without screenshot
-    await navigator.clipboard.writeText(currentYAML);
-    showSuccess('Copied (screenshot failed)');
-  }
-});
-
-// Download button click handler - always captures screenshot
-downloadButton.addEventListener('click', async () => {
-  try {
-    showSuccess('Capturing screenshot...');
-    await captureScreenshot();
-
-    const yamlWithScreenshot = screenshotData
-      ? generateYAMLWithScreenshot(currentYAML, screenshotData)
-      : currentYAML;
-
-    const blob = new Blob([yamlWithScreenshot], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'design-system.yaml';
-    a.click();
-    URL.revokeObjectURL(url);
-    showSuccess('Downloaded with screenshot!');
-  } catch (error) {
-    console.error('Download failed:', error);
-    // Fallback: download without screenshot
-    const blob = new Blob([currentYAML], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'design-system.yaml';
-    a.click();
-    URL.revokeObjectURL(url);
-    showSuccess('Downloaded (screenshot failed)');
-  }
-});
-
-/**
- * Captures screenshot of the visible tab
- */
-async function captureScreenshot(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs[0]?.id) {
-        reject(new Error('No active tab found'));
-        return;
-      }
-
-      chrome.tabs.captureVisibleTab(null as any, { format: 'png' }, (dataUrl) => {
-        if (chrome.runtime.lastError) {
-          console.error('Screenshot capture error:', chrome.runtime.lastError);
-          screenshotData = null;
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-
-        if (!dataUrl) {
-          screenshotData = null;
-          reject(new Error('No screenshot data received'));
-          return;
-        }
-
-        // Strip the data:image/png;base64, prefix
-        const base64 = dataUrl.split(',')[1];
-
-        // Get viewport dimensions
-        const viewport = `${window.screen.width}x${window.screen.height}`;
-
-        screenshotData = {
-          base64,
-          format: 'image/png',
-          viewport
-        };
-
-        resolve();
-      });
-    });
+// Copy button click handler
+copyButton.addEventListener('click', () => {
+  navigator.clipboard.writeText(currentYAML).then(() => {
+    showSuccess('Copied to clipboard!');
   });
-}
+});
 
-/**
- * Generates YAML with screenshot metadata embedded
- */
-function generateYAMLWithScreenshot(
-  baseYAML: string,
-  screenshot: { base64: string; format: string; viewport: string }
-): string {
-  // Find the metadata section and insert screenshot data
-  const lines = baseYAML.split('\n');
-  let metadataEndIndex = -1;
-
-  // Find where metadata section ends (look for next top-level section)
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith('metadata:')) {
-      // Found metadata start, now find where it ends
-      for (let j = i + 1; j < lines.length; j++) {
-        // Next section starts (no indentation, ends with colon)
-        if (lines[j] && !lines[j].startsWith(' ') && !lines[j].startsWith('\t') && lines[j].includes(':')) {
-          metadataEndIndex = j;
-          break;
-        }
-      }
-      break;
-    }
-  }
-
-  if (metadataEndIndex === -1) {
-    // Metadata section not found or is last section
-    // Just append at the end of metadata
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('metadata:')) {
-        // Find the last non-empty line in metadata
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j] && !lines[j].startsWith(' ') && !lines[j].startsWith('\t') && lines[j].trim() !== '') {
-            metadataEndIndex = j;
-            break;
-          }
-        }
-        if (metadataEndIndex === -1) {
-          metadataEndIndex = lines.length;
-        }
-        break;
-      }
-    }
-  }
-
-  // Insert screenshot metadata before the next section
-  const screenshotLines = [
-    `  screenshot: "${screenshot.base64}"`,
-    `  screenshot-format: "${screenshot.format}"`,
-    `  screenshot-viewport: "${screenshot.viewport}"`
-  ];
-
-  lines.splice(metadataEndIndex, 0, ...screenshotLines);
-  return lines.join('\n');
-}
+// Download button click handler
+downloadButton.addEventListener('click', () => {
+  const blob = new Blob([currentYAML], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'design-system.yaml';
+  a.click();
+  URL.revokeObjectURL(url);
+  showSuccess('Downloaded!');
+});
 
 /**
  * Shows loading state
@@ -263,6 +126,46 @@ function showSuccess(message: string): void {
 }
 
 /**
+ * Recursively generates YAML for DOM tree structure
+ */
+function generateDOMYAML(node: any, indentLevel: number): string {
+  const indent = '  '.repeat(indentLevel);
+  let yaml = '';
+
+  yaml += `${indent}tag: ${node.tag}\n`;
+
+  if (node.classes && node.classes.length > 0) {
+    yaml += `${indent}classes: [${node.classes.join(', ')}]\n`;
+  }
+
+  if (node.role) {
+    yaml += `${indent}role: ${node.role}\n`;
+  }
+
+  if (node.layout) {
+    yaml += `${indent}layout: ${node.layout}\n`;
+  }
+
+  if (node.dimensions) {
+    yaml += `${indent}dimensions: { width: ${node.dimensions.width}px, height: ${node.dimensions.height}px }\n`;
+  }
+
+  if (node.text) {
+    yaml += `${indent}text: "${node.text}"\n`;
+  }
+
+  if (node.children && node.children.length > 0) {
+    yaml += `${indent}children:\n`;
+    node.children.forEach((child: any) => {
+      yaml += `${indent}  -\n`;
+      yaml += generateDOMYAML(child, indentLevel + 2);
+    });
+  }
+
+  return yaml;
+}
+
+/**
  * Generates YAML format optimized for AI processing
  * Raw extraction data with usage statistics for AI enhancement
  */
@@ -275,11 +178,22 @@ function generateYAML(styles: any): string {
 
   yaml += `metadata:\n`;
   yaml += `  extraction-date: ${now}\n`;
+  if (styles.domStructure) {
+    yaml += `  url: "${styles.domStructure.url}"\n`;
+    yaml += `  viewport: "${styles.domStructure.viewport.width}x${styles.domStructure.viewport.height}"\n`;
+  }
   if (styles.typographyContext?.typeScale) {
     yaml += `  detected-pattern: "${styles.typographyContext.typeScale.ratioName}"\n`;
     yaml += `  confidence: ${styles.typographyContext.typeScale.confidence}\n`;
   }
   yaml += `\n`;
+
+  // DOM Structure - hierarchical component tree
+  if (styles.domStructure?.tree) {
+    yaml += `dom-structure:\n`;
+    yaml += generateDOMYAML(styles.domStructure.tree, 1);
+    yaml += `\n`;
+  }
 
   // Colors - with usage data
   yaml += `colors:\n`;
