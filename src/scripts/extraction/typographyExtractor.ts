@@ -1,4 +1,4 @@
-import type { TypographyAnalysis } from '../types/extraction';
+import type { TypographyAnalysis, TypographyStyle } from '../types/extraction';
 import {
   detectIfHeading,
   classifyBodyText,
@@ -9,7 +9,23 @@ import {
 } from '../utils/textProcessor';
 
 /**
- * Extracts font family values from the page
+ * Extracts font family values from elements on the page.
+ *
+ * Scans up to 100 elements and collects their computed font-family values,
+ * filtering out inherited values. Returns the top 10 most unique fonts found.
+ *
+ * @returns {string[]} Array of font family strings (max 10) found on the page.
+ * Font families are returned as computed by the browser, including fallbacks.
+ *
+ * @example
+ * ```typescript
+ * const fonts = extractFonts();
+ * // Returns: [
+ * //   '"Inter", sans-serif',
+ * //   '"Roboto Mono", monospace',
+ * //   'system-ui, -apple-system, sans-serif'
+ * // ]
+ * ```
  */
 export function extractFonts(): string[] {
   const fonts = new Set<string>();
@@ -30,12 +46,77 @@ export function extractFonts(): string[] {
 }
 
 /**
- * Extracts comprehensive typography context including headings, body text, type scale, and line height patterns
+ * Extracts comprehensive typography context from the current page.
+ *
+ * Performs deep analysis of the page's typography system by scanning semantic headings (h1-h6),
+ * body text elements, and inferring heading-like styles from visual characteristics. Also analyzes
+ * the type scale (font size progression) and line-height patterns to detect design system patterns.
+ *
+ * The function:
+ * - Extracts semantic headings (h1-h6) with their computed styles and usage examples
+ * - Infers additional headings from large, bold text that looks like headings
+ * - Classifies body text into categories (body, small, caption, button, label, etc.)
+ * - Analyzes the type scale to detect if a consistent ratio is being used
+ * - Identifies common line-height patterns and their usage contexts
+ *
+ * @returns {TypographyAnalysis} Complete typography analysis including:
+ *   - `headings`: Record of heading styles keyed by tag or inferred level (e.g., "h1", "h2 (inferred)")
+ *   - `body`: Array of body text styles sorted by frequency (top 8 most common)
+ *   - `typeScale`: Type scale analysis with base size, ratio, and confidence level
+ *   - `lineHeightPatterns`: Common line-height values with their ratios and usage contexts
+ *
+ * @example
+ * ```typescript
+ * const typography = extractTypographyContext();
+ * // Returns: {
+ * //   headings: {
+ * //     h1: {
+ * //       fontSize: "48px",
+ * //       fontWeight: "700",
+ * //       lineHeight: "1.2",
+ * //       color: "rgb(0, 0, 0)",
+ * //       usage: "H1 headings",
+ * //       examples: ["Welcome to our site", "Latest Products"],
+ * //       tag: "h1",
+ * //       count: 3
+ * //     },
+ * //     "h2 (inferred)": {
+ * //       fontSize: "32px",
+ * //       fontWeight: "600",
+ * //       // ... additional heading-like text detected by visual analysis
+ * //     }
+ * //   },
+ * //   body: [
+ * //     {
+ * //       fontSize: "16px",
+ * //       fontWeight: "400",
+ * //       lineHeight: "1.5",
+ * //       usage: "Body text",
+ * //       count: 45
+ * //     }
+ * //   ],
+ * //   typeScale: {
+ * //     baseSize: 16,
+ * //     ratio: 1.25,
+ * //     ratioName: "Major Third",
+ * //     scale: [12, 16, 20, 24, 32, 40],
+ * //     confidence: "high"
+ * //   },
+ * //   lineHeightPatterns: [
+ * //     {
+ * //       value: "1.5",
+ * //       ratio: 1.5,
+ * //       count: 32,
+ * //       usage: "Body text line height"
+ * //     }
+ * //   ]
+ * // }
+ * ```
  */
 export function extractTypographyContext(): TypographyAnalysis {
-  const headings: { [tag: string]: any } = {};
-  const bodyMap = new Map<string, any>();
-  const inferredHeadingsMap = new Map<string, any>();
+  const headings: Record<string, TypographyStyle> = {};
+  const bodyMap = new Map<string, TypographyStyle>();
+  const inferredHeadingsMap = new Map<string, TypographyStyle>();
   const allFontSizes: number[] = [];
   const lineHeightMap = new Map<string, { count: number; fontSize: number[] }>();
 

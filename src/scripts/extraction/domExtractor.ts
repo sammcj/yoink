@@ -1,14 +1,29 @@
 import { isVisible, isInViewport, shouldSkipElement, shouldPruneNode } from '../utils/domFilters';
+import type { DOMNode, DOMNodeStyles, DOMTreeExtraction } from '../types/extraction';
 
 /**
- * Recursively extracts a DOM node and its children into a structured format
- * @param el The DOM element to extract
- * @param depth Current depth in the tree
- * @param maxDepth Maximum depth to traverse
- * @param maxChildren Maximum number of direct children to process per node
- * @returns Structured node representation or null if should be skipped
+ * Recursively extracts a DOM node and its children into a structured format.
+ *
+ * This function traverses the DOM tree starting from the given element and extracts
+ * semantic information including tag names, classes, roles, computed styles, text content,
+ * and special attributes (href for links, src for images, etc.). It applies performance
+ * optimizations by limiting depth and children, and filtering out non-visible elements.
+ *
+ * @param el - The DOM element to extract and analyze
+ * @param depth - Current depth in the tree (starts at 0 for root)
+ * @param maxDepth - Maximum depth to traverse (deeper nodes are pruned)
+ * @param maxChildren - Maximum number of direct children to process per node
+ * @returns Structured DOMNode representation with semantic information, or null if the element should be skipped (invisible, script tags, etc.)
+ *
+ * @example
+ * ```typescript
+ * const node = extractNode(document.body, 0, 12, 15);
+ * if (node) {
+ *   console.log(`Extracted ${node.tag} with ${node.children?.length ?? 0} children`);
+ * }
+ * ```
  */
-export function extractNode(el: Element, depth: number, maxDepth: number, maxChildren: number): any | null {
+export function extractNode(el: Element, depth: number, maxDepth: number, maxChildren: number): DOMNode | null {
   if (depth > maxDepth || shouldSkipElement(el) || !isVisible(el)) {
     return null;
   }
@@ -23,7 +38,7 @@ export function extractNode(el: Element, depth: number, maxDepth: number, maxChi
   const role = el.getAttribute('role') || el.getAttribute('aria-label') || undefined;
   const computed = window.getComputedStyle(el);
 
-  const node: any = {
+  const node: Partial<DOMNode> = {
     tag: tagName,
     ...(classList.length > 0 && { classes: classList }),
     ...(role && { role })
@@ -103,7 +118,7 @@ export function extractNode(el: Element, depth: number, maxDepth: number, maxChi
   }
 
   // Extract key computed styles to decode obfuscated class names
-  const styles: any = {};
+  const styles: Partial<DOMNodeStyles> = {};
 
   // Display (always include)
   styles.display = computed.display;
@@ -153,7 +168,7 @@ export function extractNode(el: Element, depth: number, maxDepth: number, maxChi
 
   // Only add styles object if we have meaningful styles
   if (Object.keys(styles).length > 1) { // More than just 'display'
-    node.styles = styles;
+    node.styles = styles as DOMNodeStyles;
   }
 
   // Extract text content - improved to avoid icon duplication
@@ -211,7 +226,7 @@ export function extractNode(el: Element, depth: number, maxDepth: number, maxChi
   }
 
   // Recursively extract children
-  const children: any[] = [];
+  const children: DOMNode[] = [];
   const childElements = Array.from(el.children).slice(0, maxChildren);
 
   for (const child of childElements) {
@@ -230,14 +245,38 @@ export function extractNode(el: Element, depth: number, maxDepth: number, maxChi
     return null;
   }
 
-  return node;
+  return node as DOMNode;
 }
 
 /**
- * Extracts the complete DOM tree from the current page
- * @returns Object containing URL, viewport dimensions, and the DOM tree structure
+ * Extracts the complete DOM tree from the current page.
+ *
+ * This function is the main entry point for DOM extraction. It traverses the entire
+ * document starting from the body element and builds a structured representation
+ * of the page's DOM tree. The extraction includes semantic information, computed
+ * styles, layout patterns, and component structures optimized for AI analysis.
+ *
+ * The function applies performance optimizations including:
+ * - Depth limiting (max 12 levels deep)
+ * - Children limiting (max 15 children per node)
+ * - Viewport-based filtering for deep nodes (depth > 8)
+ * - Automatic pruning of invisible and non-semantic elements
+ *
+ * @returns Complete DOM tree extraction with page metadata including:
+ *   - url: Current page URL
+ *   - viewport: Window dimensions (width and height)
+ *   - tree: Root DOMNode representing the body element and all descendants
+ *
+ * @example
+ * ```typescript
+ * // Extract the entire page structure
+ * const extraction = extractDOMTree();
+ * console.log(`Page: ${extraction.url}`);
+ * console.log(`Viewport: ${extraction.viewport.width}x${extraction.viewport.height}`);
+ * console.log(`Root element: ${extraction.tree?.tag}`);
+ * ```
  */
-export function extractDOMTree(): any {
+export function extractDOMTree(): DOMTreeExtraction {
   const maxDepth = 12; // Increased depth for better content coverage
   const maxChildren = 15; // Increased children limit per node
 

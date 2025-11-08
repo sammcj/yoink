@@ -8,12 +8,43 @@
  * - Scrollbar styles (webkit and standard)
  */
 
+import type {
+  IconExtraction,
+  SVGIconPattern,
+  IconFontUsage,
+  Gradient,
+  ResponsiveBreakpoints,
+  ScrollbarStyle
+} from '../types/extraction';
+
 /**
- * Extracts SVG icons and icon fonts from the page
- * Detects icon sizes, patterns, and counts
+ * Extracts icon usage patterns from the current page
+ *
+ * This function analyzes both SVG icons and icon fonts (Font Awesome, Material Icons, etc.)
+ * to identify common sizes, patterns, and usage statistics. It helps understand the icon
+ * system being used on the page.
+ *
+ * Features:
+ * - Detects SVG icons with multiple dimension extraction methods (attributes, viewBox, bounding box)
+ * - Identifies icon font usage by class patterns (icon-, fa-, material-icons)
+ * - Groups SVG patterns by size and viewBox signature
+ * - Tracks common icon sizes and their frequencies
+ * - Limits results to top 10 SVG patterns and top 5 icon font sizes
+ *
+ * @returns Icon extraction data including SVG patterns, icon fonts, common sizes, and totals
+ *
+ * @example
+ * const icons = extractIcons();
+ * console.log(icons.svgPatterns); // [{ size: "24x24", viewBox: "0 0 24 24", className: "icon", count: 15 }]
+ * console.log(icons.commonSizes); // [{ size: "24x24", count: 45 }, { size: "16x16", count: 20 }]
+ * console.log(icons.totalSvgs); // 120
  */
-export function extractIcons(): any {
-  const icons: any = {
+export function extractIcons(): IconExtraction {
+  const icons: {
+    svgIcons: SVGIconPattern[];
+    iconFonts: IconFontUsage[];
+    sizes: Map<string, number>;
+  } = {
     svgIcons: [],
     iconFonts: [],
     sizes: new Map<string, number>()
@@ -21,7 +52,7 @@ export function extractIcons(): any {
 
   // Extract SVG icons - catch ALL svgs, not just ones with specific attributes
   const svgs = document.querySelectorAll('svg');
-  const svgPatterns = new Map<string, any>();
+  const svgPatterns = new Map<string, SVGIconPattern>();
 
   svgs.forEach(svg => {
     const el = svg as SVGElement;
@@ -65,7 +96,8 @@ export function extractIcons(): any {
 
     const signature = `${size}-${viewBox}`;
     if (svgPatterns.has(signature)) {
-      svgPatterns.get(signature).count++;
+      const pattern = svgPatterns.get(signature)!;
+      pattern.count++;
     } else {
       svgPatterns.set(signature, {
         size,
@@ -113,11 +145,35 @@ export function extractIcons(): any {
 }
 
 /**
- * Extracts gradient definitions from page elements
- * Detects linear, radial, and conic gradients
+ * Extracts gradient patterns used in background images across the page
+ *
+ * This function analyzes the computed styles of elements to identify and catalog
+ * gradient usage (linear, radial, and conic gradients). It helps understand the
+ * gradient design patterns and their frequency of use.
+ *
+ * Features:
+ * - Scans up to 1000 elements for performance optimization
+ * - Detects all three gradient types: linear, radial, and conic
+ * - Deduplicates gradient strings and tracks usage counts
+ * - Normalizes gradient syntax for consistent comparison
+ * - Returns top 10 most common gradients sorted by usage
+ *
+ * Performance Considerations:
+ * - Limits scanning to first 1000 elements to prevent performance issues on large pages
+ * - Uses Set for efficient duplicate detection
+ *
+ * @returns Array of gradient definitions sorted by usage count (most common first), limited to top 10
+ *
+ * @example
+ * const gradients = extractGradients();
+ * console.log(gradients);
+ * // [
+ * //   { type: "linear", value: "linear-gradient(90deg, #fff 0%, #000 100%)", count: 5 },
+ * //   { type: "radial", value: "radial-gradient(circle, #ff0 0%, #f00 100%)", count: 2 }
+ * // ]
  */
-export function extractGradients(): any[] {
-  const gradients: any[] = [];
+export function extractGradients(): Gradient[] {
+  const gradients: Gradient[] = [];
   const seen = new Set<string>();
 
   const allElements = document.querySelectorAll('*');
@@ -138,7 +194,7 @@ export function extractGradients(): any[] {
         seen.add(normalized);
 
         // Detect gradient type
-        let type = 'linear';
+        let type: 'linear' | 'radial' | 'conic' = 'linear';
         if (normalized.includes('radial-gradient')) type = 'radial';
         if (normalized.includes('conic-gradient')) type = 'conic';
 
@@ -159,12 +215,43 @@ export function extractGradients(): any[] {
 }
 
 /**
- * Extracts responsive breakpoints from media queries
- * Identifies common framework standards (Tailwind, Bootstrap)
+ * Extracts responsive design breakpoints from CSS media queries
+ *
+ * This function analyzes all accessible stylesheets to identify media query breakpoints
+ * and categorize them by their pixel values. It recognizes common CSS framework breakpoint
+ * standards (Tailwind CSS, Bootstrap) and provides insights into the responsive design system.
+ *
+ * Features:
+ * - Scans all accessible stylesheets for CSSMediaRule instances
+ * - Extracts both min-width and max-width breakpoint values
+ * - Tracks how many media queries use each breakpoint
+ * - Identifies standard framework breakpoints (Tailwind, Bootstrap)
+ * - Automatically labels recognized breakpoints with framework names
+ * - Handles cross-origin stylesheets gracefully (skips with try-catch)
+ *
+ * Recognized Framework Breakpoints:
+ * - Tailwind: 640px (sm), 768px (md), 1024px (lg), 1280px (xl), 1536px (2xl)
+ * - Bootstrap: 576px (sm), 768px (md), 992px (lg), 1200px (xl), 1400px (xxl)
+ *
+ * @returns Responsive breakpoints analysis including named breakpoints, total media queries, and unique breakpoint count
+ *
+ * @example
+ * const responsive = extractResponsiveBreakpoints();
+ * console.log(responsive.breakpoints);
+ * // [
+ * //   { width: 768, value: "768px", type: "min-width", queryCount: 5, name: "md (Tailwind/Bootstrap)" },
+ * //   { width: 1024, value: "1024px", type: "min-width", queryCount: 3, name: "lg (Tailwind)" }
+ * // ]
+ * console.log(responsive.totalMediaQueries); // 15
+ * console.log(responsive.uniqueBreakpoints); // 4
  */
-export function extractResponsiveBreakpoints(): any {
-  const breakpoints = new Map<number, any>();
-  const mediaQueries: any[] = [];
+export function extractResponsiveBreakpoints(): ResponsiveBreakpoints {
+  const breakpoints = new Map<number, {
+    value: string;
+    type: 'min-width' | 'max-width';
+    queries: string[];
+  }>();
+  const mediaQueries: string[] = [];
 
   try {
     const sheets = Array.from(document.styleSheets);
@@ -251,11 +338,46 @@ export function extractResponsiveBreakpoints(): any {
 }
 
 /**
- * Extracts custom scrollbar styles from stylesheets
- * Handles webkit scrollbar pseudo-elements and standard CSS properties
+ * Extracts custom scrollbar styling rules from CSS stylesheets
+ *
+ * This function analyzes stylesheet rules to identify custom scrollbar styles,
+ * supporting both webkit-specific pseudo-elements and standard CSS scrollbar properties
+ * (Firefox). It helps understand the scrollbar design system and customization approach.
+ *
+ * Features:
+ * - Detects webkit scrollbar pseudo-elements (::-webkit-scrollbar, ::-webkit-scrollbar-thumb, etc.)
+ * - Captures standard scrollbar properties (scrollbar-width, scrollbar-color for Firefox)
+ * - Extracts comprehensive styling properties: width, height, background, border-radius
+ * - Handles cross-origin stylesheets gracefully (skips with try-catch)
+ * - Returns top 5 most relevant scrollbar style rules
+ *
+ * Supported Properties:
+ * - Webkit: width, height, backgroundColor, borderRadius
+ * - Firefox: scrollbarWidth, scrollbarColor
+ *
+ * Common Webkit Pseudo-elements:
+ * - ::-webkit-scrollbar (main scrollbar container)
+ * - ::-webkit-scrollbar-thumb (draggable scrolling handle)
+ * - ::-webkit-scrollbar-track (track/background of scrollbar)
+ *
+ * @returns Array of scrollbar style definitions, limited to top 5
+ *
+ * @example
+ * const scrollbars = extractScrollbarStyles();
+ * console.log(scrollbars);
+ * // [
+ * //   {
+ * //     selector: "::-webkit-scrollbar",
+ * //     styles: { width: "8px", backgroundColor: "#f0f0f0" }
+ * //   },
+ * //   {
+ * //     selector: "::-webkit-scrollbar-thumb",
+ * //     styles: { backgroundColor: "#888", borderRadius: "4px" }
+ * //   }
+ * // ]
  */
-export function extractScrollbarStyles(): any[] {
-  const scrollbars: any[] = [];
+export function extractScrollbarStyles(): ScrollbarStyle[] {
+  const scrollbars: ScrollbarStyle[] = [];
 
   try {
     const sheets = Array.from(document.styleSheets);
@@ -275,7 +397,7 @@ export function extractScrollbarStyles(): any[] {
               selector.includes('scrollbar-color')
             )) {
               const style = rule.style;
-              const scrollbarData: any = {
+              const scrollbarData: ScrollbarStyle = {
                 selector,
                 styles: {}
               };

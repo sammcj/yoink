@@ -5,15 +5,42 @@
  * z-index hierarchies, color context, and responsive breakpoints.
  */
 
+import type {
+  CSSCustomProperties,
+  LayoutStructure,
+  FlexboxPattern,
+  CompositionPattern,
+  ZIndexHierarchy,
+  ZIndexLayers,
+  ColorContext,
+  SpacingScale,
+  SpacingPattern,
+  LayoutPatterns,
+  ColorPairing,
+  Container
+} from '../types/extraction';
+
 // ============================================================================
 // Helper Functions for CSS Custom Properties and Color Variable Mapping
 // ============================================================================
 
 /**
- * Extract CSS custom properties (variables) from stylesheets
+ * Extracts CSS custom properties (CSS variables) from all stylesheets on the page.
+ *
+ * Scans through document stylesheets to find CSS variables defined in theme selectors
+ * like :root, .dark, [data-theme], etc. Falls back to getComputedStyle if no
+ * stylesheets are accessible. Filters out browser extension variables.
+ *
+ * @returns Object mapping variable names to theme-specific values
+ *
+ * @example
+ * ```typescript
+ * const vars = extractCSSCustomProperties();
+ * // { "--primary-color": { light: "#0066cc", dark: "#3399ff" } }
+ * ```
  */
-function extractCSSCustomProperties(): any {
-  const cssVars: any = {};
+function extractCSSCustomProperties(): CSSCustomProperties {
+  const cssVars: CSSCustomProperties = {};
   const stylesheets = document.styleSheets;
 
   for (let i = 0; i < stylesheets.length; i++) {
@@ -54,9 +81,15 @@ function extractCSSCustomProperties(): any {
 }
 
 /**
- * Extract CSS variables using getComputedStyle fallback
+ * Extracts CSS variables using getComputedStyle as a fallback method.
+ *
+ * This function is called when no CSS variables are found via stylesheet scanning.
+ * It reads computed styles from the document root and attempts to detect dark mode
+ * variants by temporarily toggling the 'dark' class.
+ *
+ * @param cssVars - The CSS variables object to populate
  */
-function extractComputedVariables(cssVars: any): void {
+function extractComputedVariables(cssVars: CSSCustomProperties): void {
   const rootStyles = getComputedStyle(document.documentElement);
 
   // Extract light mode
@@ -99,9 +132,15 @@ function extractComputedVariables(cssVars: any): void {
 }
 
 /**
- * Filters out browser extension and utility CSS variables
+ * Filters out browser extension and utility CSS variables.
+ *
+ * Removes CSS variables that belong to browser extensions (vimium, arc, grammarly, etc.)
+ * and CSS framework utility variables (Tailwind utilities, generic names like 'spacing',
+ * 'default', etc.) to focus on application-specific design tokens.
+ *
+ * @param cssVars - The CSS variables object to filter (modified in place)
  */
-function filterExtensionVariables(cssVars: any): void {
+function filterExtensionVariables(cssVars: CSSCustomProperties): void {
   const extensionPatterns = [
     'vimium-', 'arc-', 'extension-', 'grammarly-', 'lastpass-'
   ];
@@ -136,9 +175,16 @@ function filterExtensionVariables(cssVars: any): void {
 }
 
 /**
- * Recursively parse CSS rules to find custom properties
+ * Recursively parses CSS rules to find custom properties (CSS variables).
+ *
+ * Traverses through CSS rules, handling nested rules like @media and @supports,
+ * and extracts CSS custom properties from theme-related selectors (:root, .dark,
+ * [data-theme], etc.). Groups variables by theme variant.
+ *
+ * @param rules - The CSS rule list to parse
+ * @param cssVars - The CSS variables object to populate
  */
-function parseCSSRules(rules: CSSRuleList, cssVars: any): void {
+function parseCSSRules(rules: CSSRuleList, cssVars: CSSCustomProperties): void {
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
 
@@ -182,7 +228,13 @@ function parseCSSRules(rules: CSSRuleList, cssVars: any): void {
 }
 
 /**
- * Determines theme variant from CSS selector
+ * Determines the theme variant (light or dark) from a CSS selector.
+ *
+ * Analyzes the selector text to identify if it represents a dark theme selector
+ * (e.g., .dark, [data-theme="dark"]) or defaults to light theme.
+ *
+ * @param selector - The CSS selector to analyze
+ * @returns The theme variant: 'dark' or 'light'
  */
 function getThemeFromSelector(selector: string): string {
   const lower = selector.toLowerCase();
@@ -199,7 +251,14 @@ function getThemeFromSelector(selector: string): string {
 }
 
 /**
- * Normalizes color to rgb() or rgba() format
+ * Normalizes color values to a consistent rgb() or rgba() format.
+ *
+ * Converts rgba colors with alpha=1 to rgb format for consistency.
+ * Preserves hex colors as-is. Ensures uniform color representation for
+ * accurate comparison and deduplication.
+ *
+ * @param color - The color string to normalize
+ * @returns Normalized color in rgb(), rgba(), or hex format
  */
 function normalizeColor(color: string): string {
   if (color.startsWith('#')) return color;
@@ -220,9 +279,26 @@ function normalizeColor(color: string): string {
 }
 
 /**
- * Deduplicates array items based on specified keys
+ * Deduplicates array items based on specified object keys.
+ *
+ * Creates a composite key from the specified property names and filters out
+ * duplicate entries, keeping only the first occurrence of each unique combination.
+ *
+ * @param arr - The array to deduplicate
+ * @param keys - Array of property names to use for uniqueness comparison
+ * @returns Deduplicated array
+ *
+ * @example
+ * ```typescript
+ * const items = [
+ *   { width: '100px', height: '50px' },
+ *   { width: '100px', height: '50px' },
+ *   { width: '200px', height: '50px' }
+ * ];
+ * deduplicateByKey(items, ['width', 'height']); // Returns 2 unique items
+ * ```
  */
-function deduplicateByKey(arr: any[], keys: string[]): any[] {
+function deduplicateByKey<T extends Record<string, any>>(arr: T[], keys: string[]): T[] {
   const seen = new Set<string>();
   return arr.filter(item => {
     const key = keys.map(k => item[k]).join('|');
@@ -233,9 +309,16 @@ function deduplicateByKey(arr: any[], keys: string[]): any[] {
 }
 
 /**
- * Builds a map of computed colors to CSS variable names
+ * Builds a map from computed color values to their CSS variable names.
+ *
+ * Creates a temporary element to compute the actual color values of CSS variables
+ * and maps them back to their variable names. This enables replacing raw color
+ * values with semantic CSS variable references like var(--primary-color).
+ *
+ * @param cssVariables - The CSS custom properties object
+ * @returns Map of normalized color values to CSS variable names
  */
-function buildColorVariableMap(cssVariables: any): Map<string, string> {
+function buildColorVariableMap(cssVariables: CSSCustomProperties): Map<string, string> {
   const colorVarMap = new Map<string, string>();
   const tempDiv = document.createElement('div');
   tempDiv.style.display = 'none';
@@ -243,7 +326,7 @@ function buildColorVariableMap(cssVariables: any): Map<string, string> {
 
   try {
     for (const [varName, themes] of Object.entries(cssVariables || {})) {
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+      const lightValue = themes.light || themes[Object.keys(themes)[0]];
       if (!lightValue) continue;
 
       // Set the variable value and read the computed color
@@ -274,7 +357,15 @@ function buildColorVariableMap(cssVariables: any): Map<string, string> {
 }
 
 /**
- * Maps a computed color to its CSS variable name
+ * Maps a computed color value to its CSS variable reference.
+ *
+ * Attempts to find a CSS variable that matches the given color. Falls back
+ * to common color name mappings (#ffffff, #000000, etc.) or returns the
+ * original color if no mapping is found.
+ *
+ * @param computedColor - The computed color value to map
+ * @param colorVarMap - Map of color values to CSS variable names
+ * @returns CSS variable reference (e.g., 'var(--primary)') or original color
  */
 function mapColorToVariable(computedColor: string, colorVarMap: Map<string, string>): string {
   const normalized = normalizeColor(computedColor);
@@ -306,7 +397,15 @@ function mapColorToVariable(computedColor: string, colorVarMap: Map<string, stri
 // ============================================================================
 
 /**
- * Infers the context where spacing is used
+ * Infers the semantic context where spacing is being used.
+ *
+ * Analyzes element tag names and class names to determine the purpose of the
+ * spacing (e.g., button-internal, card-spacing, typography-spacing). This helps
+ * categorize spacing values by their usage patterns.
+ *
+ * @param element - The HTML element to analyze
+ * @param type - The type of spacing: 'padding' or 'margin'
+ * @returns The inferred context category
  */
 function inferSpacingContext(element: HTMLElement, type: string): string {
   const tagName = element.tagName.toLowerCase();
@@ -343,9 +442,19 @@ function inferSpacingContext(element: HTMLElement, type: string): string {
 }
 
 /**
- * Categorizes spacing usage into readable categories
+ * Categorizes spacing values into human-readable usage categories.
+ *
+ * Groups spacing values by their typical use case based on size:
+ * - Micro (≤8px): Component internals
+ * - Small (≤16px): Component padding, tight layouts
+ * - Medium (≤32px): Component margins, content separation
+ * - Large (≤64px): Section padding, major separations
+ * - Extra large (>64px): Page layout, hero sections
+ *
+ * @param spacingEntry - The spacing entry with a numeric value property
+ * @returns Human-readable category description
  */
-function categorizeSpacingUsage(spacingEntry: any): string {
+function categorizeSpacingUsage(spacingEntry: { value: number }): string {
   const { value } = spacingEntry;
 
   // Determine primary usage
@@ -363,7 +472,14 @@ function categorizeSpacingUsage(spacingEntry: any): string {
 }
 
 /**
- * Finds the greatest common divisor (base unit) of spacing values
+ * Finds the base unit for a spacing scale using greatest common divisor (GCD).
+ *
+ * Calculates the GCD of spacing values to identify the fundamental unit
+ * (typically 4px, 8px, or 16px) that the spacing system is built upon.
+ * Falls back to analyzing which common base unit most values are divisible by.
+ *
+ * @param values - Array of spacing values in pixels
+ * @returns The calculated base unit in pixels (typically 4, 8, 12, or 16)
  */
 function findBaseUnit(values: number[]): number {
   if (values.length === 0) return 8; // Default fallback
@@ -408,7 +524,14 @@ function findBaseUnit(values: number[]): number {
 }
 
 /**
- * Analyzes the pattern/ratio of spacing scale
+ * Analyzes the mathematical pattern/progression of a spacing scale.
+ *
+ * Examines the ratios between consecutive spacing values to identify the
+ * progression type (linear, geometric, doubling, or custom). This helps
+ * understand the design system's approach to spacing.
+ *
+ * @param values - Array of spacing values in ascending order
+ * @returns Description of the spacing pattern
  */
 function analyzeSpacingPattern(values: number[]): string {
   if (values.length < 2) return 'Insufficient data';
@@ -434,7 +557,14 @@ function analyzeSpacingPattern(values: number[]): string {
 }
 
 /**
- * Generates recommendations for spacing scale
+ * Generates recommendations for improving the spacing scale.
+ *
+ * Evaluates the completeness of the spacing system based on the number of
+ * scale values and provides actionable recommendations for standardization.
+ *
+ * @param scaleLength - Number of values in the spacing scale
+ * @param baseUnit - The base unit in pixels
+ * @returns Recommendation text for the spacing system
  */
 function generateSpacingRecommendation(scaleLength: number, baseUnit: number): string {
   if (scaleLength <= 5) {
@@ -451,11 +581,28 @@ function generateSpacingRecommendation(scaleLength: number, baseUnit: number): s
 // ============================================================================
 
 /**
- * Extracts the overall layout structure from the page
- * Including fixed, sticky, and main container elements
+ * Extracts the overall layout structure from the page.
+ *
+ * Scans the DOM to identify and categorize layout elements including:
+ * - Fixed position elements (headers, footers, floating UI)
+ * - Sticky positioned elements (nav bars, table headers)
+ * - Main containers with max-width constraints
+ * - Grid layout patterns
+ * - Sidebars (fixed panels on left/right)
+ *
+ * Results are deduplicated to show unique patterns.
+ *
+ * @returns Layout structure containing categorized layout elements
+ *
+ * @example
+ * ```typescript
+ * const layout = extractLayoutStructure();
+ * console.log(layout.containers); // [{ maxWidth: '1200px', centered: true, ... }]
+ * console.log(layout.sidebars); // [{ width: '240px', position: 'left', ... }]
+ * ```
  */
-export function extractLayoutStructure(): any {
-  const layouts: any = {
+export function extractLayoutStructure(): LayoutStructure {
+  const layouts: LayoutStructure = {
     fixedElements: [],
     stickyElements: [],
     containers: [],
@@ -559,11 +706,26 @@ export function extractLayoutStructure(): any {
 }
 
 /**
- * Extracts flexbox patterns from the page
- * Identifies common flex configurations and their usage
+ * Extracts flexbox patterns and usage statistics from the page.
+ *
+ * Scans elements with display: flex or inline-flex and groups them by their
+ * configuration (direction, justify-content, align-items, gap, wrap). Counts
+ * how frequently each pattern is used to identify common flexbox conventions.
+ *
+ * @returns Array of flexbox patterns sorted by usage frequency (most common first)
+ *
+ * @example
+ * ```typescript
+ * const patterns = extractFlexboxPatterns();
+ * // [
+ * //   { flexDirection: 'row', justifyContent: 'space-between',
+ * //     alignItems: 'center', gap: '8px', count: 42 },
+ * //   ...
+ * // ]
+ * ```
  */
-export function extractFlexboxPatterns(): any {
-  const flexPatterns = new Map<string, any>();
+export function extractFlexboxPatterns(): FlexboxPattern[] {
+  const flexPatterns = new Map<string, FlexboxPattern>();
   const allElements = document.querySelectorAll('*');
   const MAX_ELEMENTS = 1000;
   const elementsToCheck = Array.from(allElements).slice(0, MAX_ELEMENTS);
@@ -598,11 +760,32 @@ export function extractFlexboxPatterns(): any {
 }
 
 /**
- * Extracts component composition and nesting patterns
- * Identifies common component combinations on the page
+ * Extracts component composition and nesting patterns.
+ *
+ * Identifies common combinations of components on the page, such as:
+ * - Cards with buttons
+ * - Cards with images
+ * - Modals with forms
+ * - Navigation with dropdowns
+ * - Tables with action buttons
+ * - Buttons with icons
+ *
+ * Helps understand how components are typically composed together.
+ *
+ * @returns Array of composition patterns sorted by frequency
+ *
+ * @example
+ * ```typescript
+ * const compositions = extractComponentComposition();
+ * // [
+ * //   { pattern: 'card-with-button', count: 12,
+ * //     description: '[class*="card"] containing button' },
+ * //   ...
+ * // ]
+ * ```
  */
-export function extractComponentComposition(): any {
-  const compositions: any[] = [];
+export function extractComponentComposition(): CompositionPattern[] {
+  const compositions: CompositionPattern[] = [];
 
   // Look for common composition patterns
   const patterns = [
@@ -677,10 +860,27 @@ export function extractComponentComposition(): any {
 }
 
 /**
- * Extracts z-index hierarchy and organizes into semantic layers
- * Groups elements by z-index and identifies their context (modal, dropdown, etc.)
+ * Extracts z-index hierarchy and organizes it into semantic layers.
+ *
+ * Analyzes positioned elements to build a map of z-index values and their usage.
+ * Automatically categorizes elements by their context (modal, dropdown, tooltip, etc.)
+ * based on class names. Organizes z-index values into semantic layers:
+ * - Base (1-10): General stacking
+ * - Dropdown (10-100): Dropdown menus
+ * - Modal (100-1000): Modal dialogs
+ * - Toast (1000+): Toast notifications, tooltips
+ *
+ * @returns Z-index hierarchy with semantic organization and usage statistics
+ *
+ * @example
+ * ```typescript
+ * const zIndex = extractZIndexHierarchy();
+ * console.log(zIndex.hierarchy); // All z-index values sorted
+ * console.log(zIndex.layers.modal); // Only modal-layer z-indexes
+ * console.log(zIndex.range); // { min: 1, max: 9999 }
+ * ```
  */
-export function extractZIndexHierarchy(): any {
+export function extractZIndexHierarchy(): ZIndexHierarchy {
   const zIndexMap = new Map<number, { elements: number; contexts: string[] }>();
 
   const allElements = document.querySelectorAll('*');
@@ -731,7 +931,7 @@ export function extractZIndexHierarchy(): any {
     .sort((a, b) => a.zIndex - b.zIndex);
 
   // Organize into semantic layers
-  const layers: any = {
+  const layers: ZIndexLayers = {
     base: [],      // z-index 1-10
     dropdown: [],  // z-index 10-100
     modal: [],     // z-index 100-1000
@@ -761,11 +961,32 @@ export function extractZIndexHierarchy(): any {
 }
 
 /**
- * Extracts color usage context with CSS variable mapping
- * Analyzes background colors, text colors, border colors, and color pairings
+ * Extracts color usage context with CSS variable mapping.
+ *
+ * Analyzes how colors are used across the page:
+ * - Background colors with usage counts
+ * - Text colors with usage counts
+ * - Border colors with usage counts
+ * - Common color pairings (background + text combinations)
+ * - Mapping from computed colors to CSS variable names
+ *
+ * Attempts to replace raw color values with their semantic CSS variable
+ * references (e.g., rgb(0, 102, 204) → var(--primary-color)).
+ *
+ * @returns Color context with usage statistics and CSS variable mappings
+ *
+ * @example
+ * ```typescript
+ * const colors = extractColorContext();
+ * console.log(colors.backgrounds); // { 'rgb(255, 255, 255)': 45, ... }
+ * console.log(colors.pairings[0]); // { background: 'rgb(0, 0, 0)',
+ *                                  //   backgroundVar: 'var(--bg-dark)',
+ *                                  //   text: 'rgb(255, 255, 255)',
+ *                                  //   textVar: 'var(--text-light)', count: 23 }
+ * ```
  */
-export function extractColorContext(): any {
-  const colorUsage: any = {
+export function extractColorContext(): ColorContext {
+  const colorUsage: ColorContext = {
     backgrounds: {},
     text: {},
     borders: {},
@@ -810,16 +1031,18 @@ export function extractColorContext(): any {
         }
 
         if (pairingMap.has(pairKey)) {
-          pairingMap.get(pairKey)!.count++;
+          const existing = pairingMap.get(pairKey)!;
+          existing.count++;
         } else {
-          pairingMap.set(pairKey, {
+          const pairing: ColorPairing = {
             pair: `${normalized} / ${normalizedText}`,
             background: normalized,
             backgroundVar: bgVar,
             text: normalizedText,
             textVar: textVar,
             count: 1
-          });
+          };
+          pairingMap.set(pairKey, pairing);
         }
       }
     }
@@ -860,11 +1083,35 @@ export function extractColorContext(): any {
 }
 
 /**
- * Extracts comprehensive spacing scale from the page
- * Identifies common spacing values, base unit, and usage patterns
+ * Extracts comprehensive spacing scale from the page.
+ *
+ * Analyzes padding and margin values across the page to identify:
+ * - Common spacing values and their usage frequency
+ * - Base unit (fundamental spacing unit like 4px or 8px)
+ * - Spacing scale pattern (linear, geometric, doubling, etc.)
+ * - Usage contexts (button-internal, card-spacing, typography, etc.)
+ * - Recommendations for spacing system improvement
+ *
+ * Only includes values that are multiples of the base unit (within 2px tolerance).
+ *
+ * @returns Spacing scale analysis with base unit, pattern, and recommendations
+ *
+ * @example
+ * ```typescript
+ * const spacing = extractSpacingScale();
+ * console.log(spacing.baseUnit); // '8px'
+ * console.log(spacing.pattern); // 'Linear progression (evenly spaced)'
+ * console.log(spacing.spacingScale[0]); // { value: '8px', count: 156,
+ *                                        //   usage: 'Micro spacing...', contexts: [...] }
+ * ```
  */
-export function extractSpacingScale(): any {
-  const spacingValues = new Map<number, any>();
+export function extractSpacingScale(): SpacingScale {
+  const spacingValues = new Map<number, {
+    value: number;
+    count: number;
+    usages: { padding: number; margin: number };
+    contexts: Set<string>;
+  }>();
   const elements = document.querySelectorAll('*');
   const maxElements = Math.min(elements.length, 500);
 
@@ -962,20 +1209,38 @@ export function extractSpacingScale(): any {
 }
 
 /**
- * Extracts layout patterns including containers, spacing patterns, and breakpoints
+ * Extracts comprehensive layout patterns from the page.
+ *
+ * Aggregates multiple layout-related extraction results:
+ * - Container patterns (max-width, padding, centering)
+ * - Responsive breakpoints from media queries and Tailwind classes
+ * - Spacing scale analysis
+ * - Common spacing patterns (padding/margin combinations)
+ *
+ * This is a high-level extraction that combines multiple sub-analyses.
+ *
+ * @returns Complete layout patterns including containers, breakpoints, and spacing
+ *
+ * @example
+ * ```typescript
+ * const patterns = extractLayoutPatterns();
+ * console.log(patterns.containers); // [{ maxWidth: '1200px', padding: '20px', ... }]
+ * console.log(patterns.breakpoints); // [640, 768, 1024, 1280, 1536]
+ * console.log(patterns.spacingScale.baseUnit); // '8px'
+ * ```
  */
-export function extractLayoutPatterns(): any {
-  const layout: any = {
-    containers: [],
+export function extractLayoutPatterns(): LayoutPatterns {
+  const layout = {
+    containers: [] as Container[],
     breakpoints: extractBreakpoints(),
     spacingScale: extractSpacingScale(),
-    spacingPatterns: {}
+    spacingPatterns: {} as Record<string, SpacingPattern>
   };
 
   // Find container elements
   const containerSelectors = '[class*="container"], main, section, [class*="wrapper"]';
   const containers = document.querySelectorAll(containerSelectors);
-  const containerMap = new Map<string, any>();
+  const containerMap = new Map<string, Container>();
 
   containers.forEach(el => {
     const styles = getComputedStyle(el);
@@ -1016,7 +1281,7 @@ export function extractLayoutPatterns(): any {
     if (padding && padding !== '0px') {
       const key = `padding:${padding}`;
       if (!layout.spacingPatterns[key]) {
-        layout.spacingPatterns[key] = { type: 'padding', count: 0 };
+        layout.spacingPatterns[key] = { type: 'padding' as const, count: 0 };
       }
       layout.spacingPatterns[key].count++;
     }
@@ -1025,7 +1290,7 @@ export function extractLayoutPatterns(): any {
     if (margin && margin !== '0px') {
       const key = `margin:${margin}`;
       if (!layout.spacingPatterns[key]) {
-        layout.spacingPatterns[key] = { type: 'margin', count: 0 };
+        layout.spacingPatterns[key] = { type: 'margin' as const, count: 0 };
       }
       layout.spacingPatterns[key].count++;
     }
@@ -1035,8 +1300,22 @@ export function extractLayoutPatterns(): any {
 }
 
 /**
- * Extracts breakpoints from stylesheets and Tailwind classes
- * Identifies responsive design breakpoints used on the page
+ * Extracts responsive breakpoints from stylesheets and Tailwind classes.
+ *
+ * Scans for breakpoint usage in two ways:
+ * 1. Parses @media rules in stylesheets to extract pixel values
+ * 2. Detects Tailwind responsive class prefixes (sm:, md:, lg:, xl:, 2xl:)
+ *
+ * Returns a sorted list of unique breakpoint values commonly used for
+ * responsive design (320px - 2560px range).
+ *
+ * @returns Sorted array of breakpoint values in pixels
+ *
+ * @example
+ * ```typescript
+ * const breakpoints = extractBreakpoints();
+ * // [640, 768, 1024, 1280, 1536]
+ * ```
  */
 export function extractBreakpoints(): number[] {
   const breakpoints = new Set<number>();

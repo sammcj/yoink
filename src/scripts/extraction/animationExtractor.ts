@@ -1,7 +1,36 @@
+import type {
+  AnimationExtraction,
+  TransitionPattern
+} from '../types/extraction';
+
 /**
- * Extracts animations and transition patterns
+ * Extracts animations and transition patterns from the current document.
+ *
+ * Analyzes computed styles of DOM elements to identify:
+ * - CSS transitions with their properties, durations, easing functions, and delays
+ * - CSS animations and their usage frequency
+ * - Common animation durations across the page
+ * - Common easing functions used in transitions
+ *
+ * The extraction process:
+ * 1. Samples up to 1000 elements from the DOM to avoid performance issues
+ * 2. Extracts and parses transition and animation properties from computed styles
+ * 3. Deduplicates and aggregates patterns by usage frequency
+ * 4. Returns the top 20 transition patterns and top 10 animations
+ * 5. Identifies the 5 most common durations and easing functions
+ *
+ * @returns {AnimationExtraction} Object containing:
+ *   - transitions: Array of transition patterns with property, duration, easing, delay, and usage count
+ *   - animations: Array of animation patterns with their raw CSS values and usage count
+ *   - commonDurations: Top 5 most frequently used animation/transition durations
+ *   - commonEasings: Top 5 most frequently used easing functions
+ *
+ * @example
+ * const animations = extractAnimations();
+ * console.log(animations.transitions); // [{ property: 'opacity', duration: '300ms', easing: 'ease-in-out', delay: '0s', count: 42 }, ...]
+ * console.log(animations.commonDurations); // [{ duration: '300ms', count: 120 }, ...]
  */
-export function extractAnimations(): any {
+export function extractAnimations(): AnimationExtraction {
   const transitions = new Map<string, number>();
   const animations = new Map<string, number>();
 
@@ -29,7 +58,7 @@ export function extractAnimations(): any {
   });
 
   // Parse common transition patterns
-  const transitionPatterns: any[] = [];
+  const transitionPatterns: TransitionPattern[] = [];
   transitions.forEach((count, transition) => {
     // Parse transition string
     const parts = transition.split(',').map(t => t.trim());
@@ -84,12 +113,36 @@ export function extractAnimations(): any {
 }
 
 /**
- * Helper function to deduplicate array of objects by specified keys
+ * Deduplicates an array of objects based on specified key properties.
+ *
+ * Creates a composite key from the specified properties and filters out
+ * duplicate entries, keeping only the first occurrence of each unique
+ * combination.
+ *
+ * @template T - The type of objects in the array
+ * @param {T[]} arr - The array of objects to deduplicate
+ * @param {(keyof T)[]} keys - Array of property names to use for deduplication
+ * @returns {T[]} A new array with duplicate entries removed based on the specified keys
+ *
+ * @example
+ * const items = [
+ *   { property: 'opacity', duration: '300ms', count: 5 },
+ *   { property: 'opacity', duration: '300ms', count: 3 },
+ *   { property: 'color', duration: '200ms', count: 2 }
+ * ];
+ * const unique = deduplicateByKey(items, ['property', 'duration']);
+ * // Returns: [
+ * //   { property: 'opacity', duration: '300ms', count: 5 },
+ * //   { property: 'color', duration: '200ms', count: 2 }
+ * // ]
  */
-function deduplicateByKey(arr: any[], keys: string[]): any[] {
+function deduplicateByKey<T>(
+  arr: T[],
+  keys: (keyof T)[]
+): T[] {
   const seen = new Set<string>();
   return arr.filter(item => {
-    const key = keys.map(k => item[k]).join('|');
+    const key = keys.map(k => String(item[k])).join('|');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

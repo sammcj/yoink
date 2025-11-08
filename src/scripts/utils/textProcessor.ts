@@ -9,7 +9,19 @@
 import { TypeScaleAnalysis, LineHeightPattern } from '../types/extraction';
 
 /**
- * Enhanced heading detection with multiple heuristics
+ * Intelligently detects whether an element should be classified as a heading based on multiple heuristics.
+ * Combines visual hierarchy (size, weight), text characteristics (length, capitalization),
+ * and semantic markers (class names, tag names) to make accurate determinations.
+ *
+ * @param element - HTML element to analyze
+ * @param fontSize - Font size in pixels
+ * @param weight - Font weight (numeric value, e.g., 400, 600, 700)
+ * @param text - Text content of the element
+ * @returns True if element should be classified as a heading, false otherwise
+ * @example
+ * const el = document.querySelector('.title');
+ * const isHeading = detectIfHeading(el, 24, 700, "Welcome to Our Site");
+ * // Returns true (large, bold, short, capitalized)
  */
 export function detectIfHeading(element: HTMLElement, fontSize: number, weight: number, text: string): boolean {
   const tagName = element.tagName.toLowerCase();
@@ -41,7 +53,20 @@ export function detectIfHeading(element: HTMLElement, fontSize: number, weight: 
 }
 
 /**
- * Enhanced body text classification
+ * Classifies body text elements into specific categories based on context and styling.
+ * Distinguishes between UI text (buttons, navigation), captions, labels, content text, and links.
+ * Useful for understanding text hierarchy and purpose in design systems.
+ *
+ * @param element - HTML element containing text to classify
+ * @param fontSize - Font size in pixels
+ * @param weight - Font weight (numeric value)
+ * @returns Classification string describing the text type (e.g., "UI: Button text", "Content: Paragraph", "Caption/Meta text")
+ * @example
+ * const el = document.querySelector('button');
+ * classifyBodyText(el, 14, 500); // Returns "UI: Button text"
+ *
+ * const p = document.querySelector('p');
+ * classifyBodyText(p, 16, 400); // Returns "Content: Paragraph"
  */
 export function classifyBodyText(element: HTMLElement, fontSize: number, weight: number): string {
   const tagName = element.tagName.toLowerCase();
@@ -102,7 +127,18 @@ export function classifyBodyText(element: HTMLElement, fontSize: number, weight:
 }
 
 /**
- * Tracks line-height values for pattern analysis
+ * Tracks line-height values and their associated font sizes for pattern analysis.
+ * Accumulates data in a map to identify common line-height patterns across a document.
+ * Skips 'normal' and empty line-height values.
+ *
+ * @param lineHeight - Computed line-height value as string (e.g., "24px", "1.5")
+ * @param fontSize - Font size in pixels associated with this line-height
+ * @param lineHeightMap - Map to store accumulated line-height data (mutated by this function)
+ * @example
+ * const map = new Map();
+ * trackLineHeight("24px", 16, map);
+ * trackLineHeight("24px", 14, map);
+ * // map now has: { "24px": { count: 2, fontSize: [16, 14] } }
  */
 export function trackLineHeight(lineHeight: string, fontSize: number, lineHeightMap: Map<string, { count: number; fontSize: number[] }>): void {
   if (!lineHeight || lineHeight === 'normal') return;
@@ -117,7 +153,22 @@ export function trackLineHeight(lineHeight: string, fontSize: number, lineHeight
 }
 
 /**
- * Analyzes font sizes to detect type scale ratio
+ * Analyzes a collection of font sizes to detect the underlying typographic scale and ratio.
+ * Identifies the base font size and calculates the scaling ratio between consecutive sizes.
+ * Matches against common typographic scales (Major Second, Perfect Fourth, Golden Ratio, etc.).
+ *
+ * @param fontSizes - Array of font sizes in pixels collected from the document
+ * @returns TypeScaleAnalysis object containing base size, detected ratio, ratio name, scale array, and confidence level
+ * @example
+ * const sizes = [12, 14, 16, 18, 21, 24, 28, 32];
+ * const analysis = analyzeTypeScale(sizes);
+ * // Returns: {
+ * //   baseSize: 16,
+ * //   ratio: 1.2,
+ * //   ratioName: "Minor Third (1.2)",
+ * //   scale: [12, 14, 16, 18, 21, 24, 28, 32],
+ * //   confidence: "high"
+ * // }
  */
 export function analyzeTypeScale(fontSizes: number[]): TypeScaleAnalysis {
   if (fontSizes.length < 3) {
@@ -192,7 +243,22 @@ export function analyzeTypeScale(fontSizes: number[]): TypeScaleAnalysis {
 }
 
 /**
- * Analyzes line-height patterns
+ * Analyzes accumulated line-height data to identify common patterns and their usage.
+ * Calculates line-height to font-size ratios and categorizes them by usage context
+ * (tight for headings, normal for body, loose for content).
+ *
+ * @param lineHeightMap - Map of line-height values with their counts and associated font sizes
+ * @returns Array of LineHeightPattern objects, sorted by frequency (most common first), limited to top 5
+ * @example
+ * const map = new Map([
+ *   ["24px", { count: 15, fontSize: [16, 16, 14] }],
+ *   ["20px", { count: 8, fontSize: [14, 14] }]
+ * ]);
+ * const patterns = analyzeLineHeightPatterns(map);
+ * // Returns: [
+ * //   { value: "24px", ratio: 1.5, count: 15, usage: "Normal (body)" },
+ * //   { value: "20px", ratio: 1.43, count: 8, usage: "Normal (body)" }
+ * // ]
  */
 export function analyzeLineHeightPatterns(lineHeightMap: Map<string, { count: number; fontSize: number[] }>): LineHeightPattern[] {
   const patterns: LineHeightPattern[] = [];
@@ -224,7 +290,16 @@ export function analyzeLineHeightPatterns(lineHeightMap: Map<string, { count: nu
 }
 
 /**
- * Infer heading level from font size (for inferred headings)
+ * Infers the appropriate semantic heading level (h1-h6) based on font size.
+ * Used when elements are visually styled as headings but don't use semantic heading tags.
+ * Maps larger sizes to higher-level headings (h1) and smaller sizes to lower levels (h6).
+ *
+ * @param fontSize - Font size in pixels
+ * @returns Heading tag name (h1, h2, h3, h4, h5, or h6)
+ * @example
+ * inferHeadingLevelFromSize(36); // Returns "h1"
+ * inferHeadingLevelFromSize(24); // Returns "h2"
+ * inferHeadingLevelFromSize(16); // Returns "h5"
  */
 export function inferHeadingLevelFromSize(fontSize: number): string {
   if (fontSize >= 32) return 'h1';

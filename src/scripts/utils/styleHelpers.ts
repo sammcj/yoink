@@ -4,7 +4,17 @@
  */
 
 /**
- * Convert OKLAB to Linear RGB
+ * Converts OKLAB color space values to Linear RGB color space.
+ * OKLAB is a perceptually uniform color space designed for image processing.
+ * This function performs the transformation through the LMS intermediate color space.
+ *
+ * @param L - Lightness component (0-1 range)
+ * @param a - Green-red axis component
+ * @param b - Blue-yellow axis component
+ * @returns Object containing linear RGB values (not gamma-corrected)
+ * @example
+ * const linearRGB = oklabToLinearRGB(0.5, 0.1, -0.2);
+ * // Returns { r: 0.234, g: 0.567, b: 0.890 }
  */
 export function oklabToLinearRGB(L: number, a: number, b: number): { r: number; g: number; b: number } {
   // OKLAB to LMS
@@ -25,7 +35,14 @@ export function oklabToLinearRGB(L: number, a: number, b: number): { r: number; 
 }
 
 /**
- * Convert Linear RGB to sRGB (gamma correction)
+ * Converts a linear RGB component value to sRGB (gamma-corrected) color space.
+ * Applies the sRGB gamma correction curve which makes the colors suitable for display on screens.
+ *
+ * @param linear - Linear RGB component value (0-1 range)
+ * @returns Gamma-corrected sRGB value (0-1 range)
+ * @example
+ * const srgb = linearRGBToSRGB(0.5);
+ * // Returns ~0.735 (after gamma correction)
  */
 export function linearRGBToSRGB(linear: number): number {
   if (linear <= 0.0031308) {
@@ -36,7 +53,15 @@ export function linearRGBToSRGB(linear: number): number {
 }
 
 /**
- * Parse OKLCH color format: oklch(L C H) or oklch(L C H / alpha)
+ * Parses an OKLCH color string and converts it to RGB values.
+ * OKLCH uses cylindrical coordinates (Lightness, Chroma, Hue) which makes it intuitive for color selection.
+ * Supports both alpha and non-alpha formats.
+ *
+ * @param color - Color string in OKLCH format (e.g., "oklch(0.5 0.2 180)" or "oklch(0.5 0.2 180 / 0.8)")
+ * @returns Object with RGB components (0-255 range) or null if parsing fails
+ * @example
+ * const rgb = parseOKLCH("oklch(0.5 0.2 180)");
+ * // Returns { r: 123, g: 145, b: 167 }
  */
 export function parseOKLCH(color: string): { r: number; g: number; b: number } | null {
   const match = color.match(/oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
@@ -63,7 +88,15 @@ export function parseOKLCH(color: string): { r: number; g: number; b: number } |
 }
 
 /**
- * Parse OKLAB color format: oklab(L a b) or oklab(L a b / alpha)
+ * Parses an OKLAB color string and converts it to RGB values.
+ * OKLAB is a perceptually uniform color space where equal distances represent equal visual differences.
+ * Supports both alpha and non-alpha formats.
+ *
+ * @param color - Color string in OKLAB format (e.g., "oklab(0.5 0.1 -0.2)" or "oklab(0.5 0.1 -0.2 / 0.8)")
+ * @returns Object with RGB components (0-255 range) or null if parsing fails
+ * @example
+ * const rgb = parseOKLAB("oklab(0.5 0.1 -0.2)");
+ * // Returns { r: 100, g: 130, b: 160 }
  */
 export function parseOKLAB(color: string): { r: number; g: number; b: number } | null {
   const match = color.match(/oklab\(([\d.]+)\s+([-\d.]+)\s+([-\d.]+)/);
@@ -85,8 +118,17 @@ export function parseOKLAB(color: string): { r: number; g: number; b: number } |
 }
 
 /**
- * Converts a color string (rgb, rgba, hex, oklch, oklab, hsl, etc.) to RGB components
- * Uses browser's color computation for formats like oklch/oklab that require complex conversion
+ * Converts any CSS color string to RGB components.
+ * Handles multiple color formats: rgb/rgba, hex, oklch, oklab, hsl, and named colors.
+ * Uses browser's native color computation for complex formats as a fallback.
+ *
+ * @param color - CSS color string in any valid format
+ * @returns Object with RGB components (0-255 range) or null if parsing fails
+ * @example
+ * parseColorToRGB("#ff5733"); // Returns { r: 255, g: 87, b: 51 }
+ * parseColorToRGB("rgb(255, 87, 51)"); // Returns { r: 255, g: 87, b: 51 }
+ * parseColorToRGB("oklch(0.6 0.2 30)"); // Returns { r: ..., g: ..., b: ... }
+ * parseColorToRGB("transparent"); // Returns { r: 0, g: 0, b: 0 }
  */
 export function parseColorToRGB(color: string): { r: number; g: number; b: number } | null {
   // Handle rgb/rgba
@@ -186,9 +228,17 @@ export function parseColorToRGB(color: string): { r: number; g: number; b: numbe
 }
 
 /**
- * Calculates color distance using Euclidean distance in RGB space
- * Returns a value between 0 (identical) and 1 (very different)
- * Normalized by dividing by maximum possible distance (441.67)
+ * Calculates the perceptual distance between two colors using Euclidean distance in RGB space.
+ * Useful for determining if two colors are similar enough to be considered the same in theming.
+ * The distance is normalized to a 0-1 scale where 0 means identical and 1 means maximally different.
+ *
+ * @param color1 - First color in any CSS color format
+ * @param color2 - Second color in any CSS color format
+ * @returns Normalized distance value (0-1 range). Returns 0 for identical colors, 1 for unparseable but different strings
+ * @example
+ * calculateColorDistance("#ff0000", "rgb(255, 0, 0)"); // Returns 0 (identical)
+ * calculateColorDistance("#ff0000", "#00ff00"); // Returns ~0.52 (quite different)
+ * calculateColorDistance("#ffffff", "#000000"); // Returns 1 (maximum difference)
  */
 export function calculateColorDistance(color1: string, color2: string): number {
   const rgb1 = parseColorToRGB(color1);
@@ -211,7 +261,15 @@ export function calculateColorDistance(color1: string, color2: string): number {
 }
 
 /**
- * Identifies theme variant from CSS selector
+ * Extracts the theme variant (light or dark) from a CSS selector string.
+ * Detects common patterns for dark mode selectors including classes and data attributes.
+ *
+ * @param selector - CSS selector string (e.g., ".dark .button", "[data-theme='dark'] button")
+ * @returns Theme identifier - either "dark" or "light" (defaults to "light" if no dark theme indicators found)
+ * @example
+ * getThemeFromSelector(".dark .container"); // Returns "dark"
+ * getThemeFromSelector("[data-theme='dark'] .button"); // Returns "dark"
+ * getThemeFromSelector(".button"); // Returns "light"
  */
 export function getThemeFromSelector(selector: string): string {
   const lower = selector.toLowerCase();
@@ -228,7 +286,15 @@ export function getThemeFromSelector(selector: string): string {
 }
 
 /**
- * Normalizes color to rgb() format
+ * Normalizes color strings to a consistent format for comparison.
+ * Converts rgba colors with alpha=1 to rgb format, preserves hex colors unchanged.
+ *
+ * @param color - Color string in rgb, rgba, or hex format
+ * @returns Normalized color string (removes unnecessary alpha channel, formats consistently)
+ * @example
+ * normalizeColor("rgba(255, 0, 0, 1)"); // Returns "rgb(255, 0, 0)"
+ * normalizeColor("rgba(255, 0, 0, 0.5)"); // Returns "rgba(255, 0, 0, 0.5)"
+ * normalizeColor("#ff0000"); // Returns "#ff0000"
  */
 export function normalizeColor(color: string): string {
   if (color.startsWith('#')) return color;
@@ -249,7 +315,16 @@ export function normalizeColor(color: string): string {
 }
 
 /**
- * Gets clean HTML representation of element for analysis
+ * Generates a simplified HTML representation of an element for debugging and analysis.
+ * Truncates deeply nested structures and long text content to keep output concise.
+ * Ensures the output stays under 400 characters while preserving essential structure.
+ *
+ * @param element - HTML element to convert to clean string representation
+ * @returns Simplified HTML string (max 400 chars) with truncated content where necessary
+ * @example
+ * const div = document.querySelector('.complex-element');
+ * getCleanHTML(div);
+ * // Returns: '<div class="complex-element">Some text content...</div>'
  */
 export function getCleanHTML(element: HTMLElement): string {
   const clone = element.cloneNode(true) as HTMLElement;
@@ -290,7 +365,16 @@ export function getCleanHTML(element: HTMLElement): string {
 }
 
 /**
- * Gets matching CSS rules for an element
+ * Retrieves all CSS rules from stylesheets that match an element and include pseudo-class selectors.
+ * Specifically targets rules with :hover, :focus, :active, and :disabled states.
+ * Ignores cross-origin stylesheets and invalid selectors.
+ *
+ * @param element - HTML element to find matching CSS rules for
+ * @returns Array of CSSStyleRule objects that match the element and contain pseudo-class selectors
+ * @example
+ * const button = document.querySelector('button');
+ * const rules = getMatchingCSSRules(button);
+ * // Returns: [CSSStyleRule { selectorText: "button:hover", ... }, ...]
  */
 export function getMatchingCSSRules(element: HTMLElement): CSSStyleRule[] {
   const rules: CSSStyleRule[] = [];
@@ -336,7 +420,15 @@ export function getMatchingCSSRules(element: HTMLElement): CSSStyleRule[] {
 }
 
 /**
- * Parses padding value string and returns the first value as a number
+ * Extracts the first numeric value from a CSS padding string.
+ * Useful for getting the top/uniform padding value from shorthand notation.
+ *
+ * @param padding - CSS padding value string (e.g., "10px", "10px 20px", "10px 20px 30px 40px")
+ * @returns First padding value as a number (without unit), or 0 if parsing fails
+ * @example
+ * parsePaddingValue("10px 20px"); // Returns 10
+ * parsePaddingValue("15px"); // Returns 15
+ * parsePaddingValue("1em 2em 3em 4em"); // Returns 1
  */
 export function parsePaddingValue(padding: string): number {
   const parts = padding.split(' ');
@@ -345,8 +437,15 @@ export function parsePaddingValue(padding: string): number {
 }
 
 /**
- * Gets the actual font size from button text content
- * Buttons often have base font on the wrapper, but larger font on the text inside
+ * Intelligently extracts the actual font size of text content within a button element.
+ * Buttons often have different font sizes on wrapper vs. inner text elements.
+ * Searches through child elements to find the actual text-bearing element and its font size.
+ *
+ * @param button - Button HTML element to analyze
+ * @returns Font size string with unit (e.g., "16px") representing the actual text size
+ * @example
+ * const button = document.querySelector('button');
+ * getButtonTextFontSize(button); // Returns "14px" (size of text content, not wrapper)
  */
 export function getButtonTextFontSize(button: HTMLElement): string {
   // First try: find the first text-bearing child element

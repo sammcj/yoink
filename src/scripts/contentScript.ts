@@ -20,7 +20,7 @@
  */
 
 // Type imports
-import { ScanStylesRequest, ScanResponse } from './types/extraction';
+import { ScanStylesRequest, ScanResponse, StyleExtraction } from './types/extraction';
 
 // Style extraction imports
 import {
@@ -83,12 +83,26 @@ chrome.runtime.onMessage.addListener((
 
 /**
  * Main style extraction orchestrator
+ *
+ * Coordinates all extraction modules to collect design system information from the current page.
+ *
+ * @param includeComponents - Whether to include component detection and advanced analysis
+ * @returns Complete style data extraction including colors, typography, layout, and optionally components
+ *
+ * @example
+ * ```typescript
+ * // Extract all styles including components
+ * const fullData = extractStyles(true);
+ *
+ * // Extract only basic styles (faster)
+ * const basicData = extractStyles(false);
+ * ```
  */
-function extractStyles(includeComponents: boolean = true): any {
+function extractStyles(includeComponents: boolean = true): StyleExtraction {
   const cssVariables = extractCSSCustomProperties();
   const colorData = extractColors();
 
-  const styleData: any = {
+  const styleData: StyleExtraction = {
     cssVariables,
     colors: colorData.colors,
     colorUsage: colorData.usage,

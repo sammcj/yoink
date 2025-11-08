@@ -8,15 +8,35 @@
  * - Border radius values
  */
 
-import type { ParsedShadow, ShadowGroup, ShadowSystem } from '../types/extraction';
+import type {
+  ParsedShadow,
+  ShadowGroup,
+  ShadowSystem,
+  CSSCustomProperties,
+  ColorExtraction
+} from '../types/extraction';
 import { getThemeFromSelector, normalizeColor } from '../utils/styleHelpers';
 
 /**
  * Extracts CSS Custom Properties from stylesheets
- * Handles theme variants like :root, .dark, [data-theme="dark"]
+ *
+ * Handles theme variants like :root, .dark, [data-theme="dark"] and automatically
+ * detects light and dark mode variables. Filters out browser extension and utility
+ * framework variables to extract only the site's design system variables.
+ *
+ * @returns {CSSCustomProperties} Object mapping CSS variable names to theme variant values
+ *
+ * @example
+ * ```typescript
+ * const cssVars = extractCSSCustomProperties();
+ * // Returns: {
+ * //   '--color-primary': { light: '#3b82f6', dark: '#60a5fa' },
+ * //   '--spacing-4': { light: '1rem' }
+ * // }
+ * ```
  */
-export function extractCSSCustomProperties(): any {
-  const cssVars: any = {};
+export function extractCSSCustomProperties(): CSSCustomProperties {
+  const cssVars: CSSCustomProperties = {};
   const stylesheets = document.styleSheets;
 
   for (let i = 0; i < stylesheets.length; i++) {
@@ -58,8 +78,22 @@ export function extractCSSCustomProperties(): any {
 
 /**
  * Extract CSS variables using getComputedStyle fallback
+ *
+ * This fallback method is used when no CSS variables are found in stylesheets
+ * (e.g., due to CORS restrictions). It reads the computed styles from the document
+ * and attempts to detect dark mode variants by temporarily toggling the dark class.
+ *
+ * @param {CSSCustomProperties} cssVars - Object to populate with CSS variable values
+ * @returns {void}
+ *
+ * @example
+ * ```typescript
+ * const cssVars: CSSCustomProperties = {};
+ * extractComputedVariables(cssVars);
+ * // cssVars is now populated with variables from computed styles
+ * ```
  */
-export function extractComputedVariables(cssVars: any): void {
+export function extractComputedVariables(cssVars: CSSCustomProperties): void {
   const rootStyles = getComputedStyle(document.documentElement);
 
   // Extract light mode
@@ -103,8 +137,26 @@ export function extractComputedVariables(cssVars: any): void {
 
 /**
  * Filters out browser extension and utility CSS variables
+ *
+ * Removes CSS variables that are likely from browser extensions (Vimium, Arc, Grammarly, etc.)
+ * or from utility CSS frameworks like Tailwind CSS. This ensures we only extract variables
+ * that are part of the site's actual design system.
+ *
+ * @param {CSSCustomProperties} cssVars - Object containing CSS variables to filter (modified in place)
+ * @returns {void}
+ *
+ * @example
+ * ```typescript
+ * const cssVars = {
+ *   '--color-primary': { light: 'blue' },
+ *   '--vimium-hint-bg': { light: 'yellow' }, // Will be removed
+ *   '--text-sm': { light: '0.875rem' }       // Will be removed (Tailwind utility)
+ * };
+ * filterExtensionVariables(cssVars);
+ * // cssVars now only contains: { '--color-primary': { light: 'blue' } }
+ * ```
  */
-export function filterExtensionVariables(cssVars: any): void {
+export function filterExtensionVariables(cssVars: CSSCustomProperties): void {
   const extensionPatterns = [
     'vimium-', 'arc-', 'extension-', 'grammarly-', 'lastpass-'
   ];
@@ -140,8 +192,24 @@ export function filterExtensionVariables(cssVars: any): void {
 
 /**
  * Recursively parse CSS rules to find custom properties
+ *
+ * Traverses CSS rules including nested rules (@media, @supports) and extracts
+ * CSS custom properties from theme-related selectors (:root, html, .dark, etc.).
+ * Maps each variable to its appropriate theme variant.
+ *
+ * @param {CSSRuleList} rules - CSS rules to parse
+ * @param {CSSCustomProperties} cssVars - Object to populate with discovered variables (modified in place)
+ * @returns {void}
+ *
+ * @example
+ * ```typescript
+ * const cssVars: CSSCustomProperties = {};
+ * const rules = document.styleSheets[0].cssRules;
+ * parseCSSRules(rules, cssVars);
+ * // cssVars now contains all CSS variables from the stylesheet
+ * ```
  */
-export function parseCSSRules(rules: CSSRuleList, cssVars: any): void {
+export function parseCSSRules(rules: CSSRuleList, cssVars: CSSCustomProperties): void {
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
 
@@ -186,8 +254,23 @@ export function parseCSSRules(rules: CSSRuleList, cssVars: any): void {
 
 /**
  * Extracts colors from page with usage tracking
+ *
+ * Scans the page's elements to discover all colors used in backgrounds, text, and borders.
+ * Tracks usage frequency for each color and returns the top 20 most frequently used colors.
+ * All colors are normalized to a consistent format.
+ *
+ * @returns {ColorExtraction} Object containing array of colors and usage count mapping
+ *
+ * @example
+ * ```typescript
+ * const result = extractColors();
+ * // Returns: {
+ * //   colors: ['#ffffff', '#000000', '#3b82f6', ...],
+ * //   usage: { '#ffffff': 45, '#000000': 38, '#3b82f6': 12, ... }
+ * // }
+ * ```
  */
-export function extractColors(): { colors: string[]; usage: any } {
+export function extractColors(): ColorExtraction {
   const colorUsage = new Map<string, number>();
   const elements = document.querySelectorAll('*');
   const maxElements = Math.min(elements.length, 200);
@@ -230,6 +313,18 @@ export function extractColors(): { colors: string[]; usage: any } {
 
 /**
  * Extracts border radius values
+ *
+ * Discovers all border-radius values used across the page's elements.
+ * Filters out percentage-based values and extreme values to focus on the
+ * design system's rounded corner scale. Returns up to 10 unique values.
+ *
+ * @returns {string[]} Array of border radius values (e.g., ['4px', '8px', '12px'])
+ *
+ * @example
+ * ```typescript
+ * const radii = extractBorderRadius();
+ * // Returns: ['2px', '4px', '8px', '16px', '24px']
+ * ```
  */
 export function extractBorderRadius(): string[] {
   const radiusValues = new Set<string>();
@@ -257,6 +352,25 @@ export function extractBorderRadius(): string[] {
 
 /**
  * Extracts and analyzes box shadow values with elevation levels
+ *
+ * Performs comprehensive shadow analysis by scanning elements, parsing shadow values,
+ * grouping them by intensity into elevation levels (0-5), and detecting the overall
+ * shadow system pattern (Material Design, custom scale, etc.).
+ *
+ * @returns {ShadowSystem} Complete shadow system analysis including elevation levels and pattern
+ *
+ * @example
+ * ```typescript
+ * const shadows = extractShadows();
+ * // Returns: {
+ * //   elevationLevels: [
+ * //     { elevationLevel: 1, name: 'Subtle', shadows: [...], count: 5, ... },
+ * //     { elevationLevel: 2, name: 'Moderate', shadows: [...], count: 8, ... }
+ * //   ],
+ * //   pattern: 'Material Design inspired (elevation-based)',
+ * //   totalUniqueShadows: 12
+ * // }
+ * ```
  */
 export function extractShadows(): ShadowSystem {
   const shadowUsage = new Map<string, number>();
@@ -298,7 +412,27 @@ export function extractShadows(): ShadowSystem {
 
 /**
  * Parses a CSS box-shadow string into structured data
- * Handles both single and multiple shadows (comma-separated)
+ *
+ * Handles both single and multiple shadows (comma-separated). For multiple shadows,
+ * it extracts the most prominent one (first non-inset shadow). Parses all shadow
+ * components including offsets, blur, spread, color, and inset status.
+ *
+ * @param {string} shadowStr - CSS box-shadow value to parse
+ * @returns {ParsedShadow | null} Structured shadow data or null if parsing fails
+ *
+ * @example
+ * ```typescript
+ * const shadow = parseShadow('0px 2px 8px 0px rgba(0, 0, 0, 0.1)');
+ * // Returns: {
+ * //   offsetX: 0,
+ * //   offsetY: 2,
+ * //   blur: 8,
+ * //   spread: 0,
+ * //   color: 'rgba(0, 0, 0, 0.1)',
+ * //   inset: false,
+ * //   raw: '0px 2px 8px 0px rgba(0, 0, 0, 0.1)'
+ * // }
+ * ```
  */
 export function parseShadow(shadowStr: string): ParsedShadow | null {
   if (!shadowStr || shadowStr === 'none') return null;
@@ -338,7 +472,23 @@ export function parseShadow(shadowStr: string): ParsedShadow | null {
 
 /**
  * Calculates shadow intensity for grouping and sorting
- * Higher blur and offset = higher intensity
+ *
+ * Computes a numeric intensity score based on blur radius, offset, and spread.
+ * Blur has the highest weight (3x), followed by Y offset (1.5x), and spread (0.5x).
+ * Higher values indicate more prominent shadows.
+ *
+ * @param {ParsedShadow} shadow - Parsed shadow object
+ * @returns {number} Intensity score (typically 0-200)
+ *
+ * @example
+ * ```typescript
+ * const shadow = {
+ *   offsetX: 0, offsetY: 4, blur: 12, spread: 0,
+ *   color: 'rgba(0,0,0,0.1)', inset: false, raw: '...'
+ * };
+ * const intensity = calculateShadowIntensity(shadow);
+ * // Returns: 42 (12*3 + 4*1.5 + 0*0.5)
+ * ```
  */
 export function calculateShadowIntensity(shadow: ParsedShadow): number {
   // Blur is the primary factor for elevation
@@ -355,6 +505,12 @@ export function calculateShadowIntensity(shadow: ParsedShadow): number {
 
 /**
  * Merges visually similar shadows within a group
+ *
+ * Groups shadows that are visually similar (within 20% intensity difference) to reduce
+ * redundancy in the shadow system. Combines usage counts for merged shadows.
+ *
+ * @param {Array<{parsed: ParsedShadow; count: number; intensity: number}>} shadows - Shadows to merge
+ * @returns {Array<{parsed: ParsedShadow; count: number; intensity: number}>} Merged shadow array
  */
 function mergeSimilarShadows(
   shadows: Array<{ parsed: ParsedShadow; count: number; intensity: number }>
@@ -399,6 +555,26 @@ function mergeSimilarShadows(
 
 /**
  * Groups shadows by elevation level (0-5)
+ *
+ * Organizes shadows into 6 elevation levels (0=None, 1=Subtle, 2=Moderate, 3=Strong,
+ * 4=Heavy, 5=Extra Heavy) based on calculated intensity scores. Merges similar shadows
+ * within each level and selects the most frequently used shadow as representative.
+ *
+ * @param {Array<{parsed: ParsedShadow; count: number}>} shadows - Array of parsed shadows with usage counts
+ * @returns {ShadowGroup[]} Array of shadow groups organized by elevation level
+ *
+ * @example
+ * ```typescript
+ * const shadows = [
+ *   { parsed: { blur: 4, offsetY: 2, ... }, count: 10 },
+ *   { parsed: { blur: 12, offsetY: 6, ... }, count: 5 }
+ * ];
+ * const groups = groupShadowsByElevation(shadows);
+ * // Returns: [
+ * //   { elevationLevel: 1, name: 'Subtle', shadows: [...], count: 10, ... },
+ * //   { elevationLevel: 2, name: 'Moderate', shadows: [...], count: 5, ... }
+ * // ]
+ * ```
  */
 export function groupShadowsByElevation(
   shadows: Array<{ parsed: ParsedShadow; count: number }>
@@ -461,6 +637,22 @@ export function groupShadowsByElevation(
 
 /**
  * Detects shadow system pattern (Material Design, custom, etc.)
+ *
+ * Analyzes shadow groups to identify the design system pattern being used.
+ * Detects Material Design patterns (blur/offset ratios of 1.5-4), geometric
+ * progressions (1.4x-2.5x ratios), or custom patterns.
+ *
+ * @param {ShadowGroup[]} groups - Array of shadow groups to analyze
+ * @returns {string} Description of the detected shadow pattern
+ *
+ * @example
+ * ```typescript
+ * const groups = extractShadows().elevationLevels;
+ * const pattern = detectShadowPattern(groups);
+ * // Returns: 'Material Design inspired (elevation-based)' or
+ * //          'Custom scale (~1.8x progression)' or
+ * //          'Custom shadow system (4 levels)'
+ * ```
  */
 export function detectShadowPattern(groups: ShadowGroup[]): string {
   if (groups.length === 0) return 'No shadows detected';

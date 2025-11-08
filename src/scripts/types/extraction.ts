@@ -765,3 +765,34 @@ export interface ScrollbarStyle {
   selector: string;
   styles: ScrollbarStyles;
 }
+
+// ============================================================================
+// Main Extraction Result Type
+// ============================================================================
+
+/**
+ * Complete style extraction result from a web page
+ */
+export interface StyleExtraction {
+  cssVariables: CSSCustomProperties;
+  colors: string[];
+  colorUsage: Record<string, number>;
+  fonts: string[];
+  borderRadius: string[];
+  shadows: ShadowSystem;
+  layout: LayoutStructure;
+  icons: IconExtraction;
+  gradients: Gradient[];
+  responsive: ResponsiveBreakpoints;
+  scrollbars: ScrollbarStyle[];
+  // Optional component analysis (only if includeComponents = true)
+  components?: ComponentExtraction;
+  typographyContext?: TypographyAnalysis;
+  colorContext?: ColorContext;
+  layoutPatterns?: LayoutPatterns;
+  flexboxPatterns?: FlexboxPattern[];
+  componentComposition?: CompositionPattern[];
+  zIndex?: ZIndexHierarchy;
+  animations?: AnimationExtraction;
+  domStructure?: DOMTreeExtraction;
+}
