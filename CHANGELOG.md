@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.1.3] - 2025-11-10
+
+### 🐛 Bug Fixes & Improvements
+
+This is a maintenance release preparing Yoink for Chrome Web Store publication.
+
+### Fixed
+- Fixed console.debug calls in styleExtractor.ts for better CORS error handling
+- Improved error handling for CORS-blocked stylesheets
+
+### Changed
+- **Output Format**: Switched from Markdown to YAML format for better AI processing
+  - YAML is more structured and easier for AI tools to parse
+  - Still includes all the same data (colors, typography, components, etc.)
+  - Download button now saves as `.yaml` instead of `.md`
+- Updated UI labels: "Copy Markdown" → "Copy YAML", "Download .md" → "Download .yaml"
+
+### Documentation
+- Updated README.md with comprehensive feature list and privacy section
+- Added MIT LICENSE file to repository
+- Enhanced README with Chrome Web Store installation placeholder
+- Added Privacy & Security section highlighting local-only processing
+
+### Quality
+- All code reviewed for Chrome Web Store compliance
+- Security audit completed - no vulnerabilities found
+- Performance optimizations maintained
+- Zero network requests - 100% local processing
+
+---
+
 ## [2.0.0] - 2025-11-04
 
 ### 🎉 Major Enhancement: CSS Custom Properties Extraction

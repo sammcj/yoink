@@ -1452,17 +1452,17 @@ function normalizeToRGB(color: string): string | null {
     const hex = color.replace('#', '');
 
     if (hex.length === 6) {
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
       return `rgb(${r}, ${g}, ${b})`;
     }
 
     if (hex.length === 8) {
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
-      const a = parseInt(hex.substr(6, 2), 16) / 255;
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      const a = parseInt(hex.substring(6, 8), 16) / 255;
       return `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
     }
   }
