@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Yoink" width="120" style="border-radius: 10%;">
+  <img src="logo.png" alt="Yoink" width="120">
 </p>
 
 <h1 align="center">Yoink</h1>
