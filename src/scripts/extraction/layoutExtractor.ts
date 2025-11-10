@@ -20,7 +20,7 @@ import type {
   Container
 } from '../types/extraction';
 import { extractCSSCustomProperties } from './styleExtractor';
-import { normalizeColor } from '../utils/styleHelpers';
+import { normalizeColor, getClassName } from '../utils/styleHelpers';
 import { getCachedElements, getCachedComputedStyle } from '../utils/domCache';
 
 // ============================================================================
@@ -158,7 +158,7 @@ function mapColorToVariable(computedColor: string, colorVarMap: Map<string, stri
  */
 function inferSpacingContext(element: HTMLElement, type: string): string {
   const tagName = element.tagName.toLowerCase();
-  const className = element.className?.toString() || '';
+  const className = getClassName(element);
 
   // Component-level spacing
   if (tagName === 'button' || className.includes('btn')) {
@@ -655,7 +655,7 @@ export function extractZIndexHierarchy(): ZIndexHierarchy {
         existing.elements += 1;
 
         // Detect context by class names
-        const className = element.className.toString().toLowerCase();
+        const className = getClassName(element).toLowerCase();
         if (className.includes('modal') && !existing.contexts.includes('modal')) {
           existing.contexts.push('modal');
         } else if (className.includes('dropdown') && !existing.contexts.includes('dropdown')) {

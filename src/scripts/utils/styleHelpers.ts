@@ -4,6 +4,25 @@
  */
 
 /**
+ * Safely gets className as a string from an element.
+ * Handles both HTML elements (className is string) and SVG elements (className is SVGAnimatedString).
+ * @param element - The DOM element
+ * @returns The className as a string
+ */
+export function getClassName(element: Element): string {
+  const className = element.className;
+  // SVG elements have className as SVGAnimatedString with baseVal property
+  if (typeof className === 'string') {
+    return className;
+  }
+  // Handle SVGAnimatedString
+  if (className && typeof className === 'object' && 'baseVal' in className) {
+    return (className as any).baseVal;
+  }
+  return '';
+}
+
+/**
  * Converts OKLAB color space values to Linear RGB color space.
  * OKLAB is a perceptually uniform color space designed for image processing.
  * This function performs the transformation through the LMS intermediate color space.
@@ -455,7 +474,7 @@ export function getButtonTextFontSize(button: HTMLElement): string {
     const text = el.textContent?.trim() || '';
 
     // Skip empty elements and icons
-    if (text.length > 0 && text.length < 100 && !el.className.includes('icon')) {
+    if (text.length > 0 && text.length < 100 && !getClassName(el).includes('icon')) {
       const styles = getComputedStyle(el);
       const fontSize = parseFloat(styles.fontSize);
 

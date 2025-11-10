@@ -7,6 +7,7 @@
  */
 
 import { TypeScaleAnalysis, LineHeightPattern } from '../types/extraction';
+import { getClassName } from './styleHelpers';
 
 /**
  * Intelligently detects whether an element should be classified as a heading based on multiple heuristics.
@@ -70,7 +71,7 @@ export function detectIfHeading(element: HTMLElement, fontSize: number, weight: 
  */
 export function classifyBodyText(element: HTMLElement, fontSize: number, weight: number): string {
   const tagName = element.tagName.toLowerCase();
-  const className = element.className.toLowerCase();
+  const className = getClassName(element).toLowerCase();
 
   // UI Text (buttons, menus, nav)
   if (tagName === 'button' || element.getAttribute('role') === 'button') {
