@@ -108,9 +108,9 @@ function displayYAML(yaml: string): void {
 function showError(message: string): void {
   errorState.classList.remove('hidden');
   resultsSection.classList.add('hidden');
-  const errorDetail = errorState.querySelector('.error-detail') as HTMLElement;
-  if (errorDetail) {
-    errorDetail.textContent = message;
+  const errorHint = errorState.querySelector('.error-hint') as HTMLElement;
+  if (errorHint) {
+    errorHint.textContent = message;
   }
 }
 
@@ -118,7 +118,10 @@ function showError(message: string): void {
  * Shows success status
  */
 function showSuccess(message: string): void {
-  successMessage.textContent = message;
+  const successText = successMessage.querySelector('.success-text') as HTMLElement;
+  if (successText) {
+    successText.textContent = message;
+  }
   successMessage.classList.remove('hidden');
   setTimeout(() => {
     successMessage.classList.add('hidden');

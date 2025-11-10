@@ -9,67 +9,73 @@
 <body>
   <!-- Header section with branding -->
   <header>
-    <h1>🎨 Yoink</h1>
-    <p class="subtitle">Design System Extractor</p>
+    <div class="logo-container">
+      <img src="logo.png" alt="Yoink Logo" class="logo">
+    </div>
+    <h1 class="brand-title">Yoink</h1>
   </header>
 
   <!-- Main content area -->
   <main>
-    <!-- Options section -->
+    <!-- Options toggle -->
     <div class="options-section">
-      <label class="checkbox-label">
+      <label class="toggle-switch">
         <input type="checkbox" id="includeComponentsCheckbox" checked>
-        <span>Include component patterns</span>
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Include components</span>
       </label>
     </div>
 
-    <!-- Scan button to trigger style extraction -->
-    <button id="scanBtn" class="primary-btn">
-      <span class="btn-icon">🔍</span>
-      Scan Page Styles
+    <!-- Primary scan button -->
+    <button id="scanBtn" class="scan-btn">
+      <span class="btn-text">Scan Page</span>
     </button>
 
-    <!-- Loading state (hidden by default) -->
+    <!-- Loading state -->
     <div id="loadingState" class="loading hidden">
-      <div class="spinner"></div>
-      <p>Analyzing page styles...</p>
+      <div class="loading-spinner">
+        <div class="spinner-circle"></div>
+      </div>
+      <p class="loading-text">Analyzing styles...</p>
     </div>
 
-    <!-- Results section (hidden until scan completes) -->
+    <!-- Results section -->
     <div id="resultsSection" class="results hidden">
-      <!-- Action buttons for copy and download -->
+      <!-- Success message -->
+      <div id="successMessage" class="success-badge hidden">
+        <span class="success-icon">✓</span>
+        <span class="success-text"></span>
+      </div>
+
+      <!-- Action buttons -->
       <div class="action-buttons">
         <button id="copyBtn" class="action-btn copy-btn">
-          <span class="btn-icon">📋</span>
-          Copy YAML
+          <span class="action-icon">📋</span>
+          <span class="action-label">Copy</span>
         </button>
         <button id="downloadBtn" class="action-btn download-btn">
-          <span class="btn-icon">💾</span>
-          Download .yaml
+          <span class="action-icon">💾</span>
+          <span class="action-label">Download</span>
         </button>
       </div>
 
-      <!-- Success message (shown after copy/download) -->
-      <div id="successMessage" class="success-message hidden"></div>
-
-      <!-- Preview area showing generated YAML -->
-      <div class="preview-container">
-        <h3>Design System Preview</h3>
+      <!-- Preview section -->
+      <div class="preview-card">
+        <div class="preview-header">
+          <h3 class="preview-title">Preview</h3>
+          <span class="preview-badge">YAML</span>
+        </div>
         <div id="yamlPreview" class="yaml-preview"></div>
       </div>
     </div>
 
-    <!-- Error state (shown if extraction fails) -->
-    <div id="errorState" class="error hidden">
-      <p>⚠️ Unable to extract styles from this page.</p>
-      <p class="error-detail">Try refreshing the page and scanning again.</p>
+    <!-- Error state -->
+    <div id="errorState" class="error-state hidden">
+      <div class="error-icon">⚠️</div>
+      <p class="error-message">Oops! Couldn't scan this page</p>
+      <p class="error-hint">Try refreshing and scanning again</p>
     </div>
   </main>
-
-  <!-- Footer with version info -->
-  <footer>
-    <p class="version">v1.0.0</p>
-  </footer>
 
   <!-- Load popup logic -->
   <script src="scripts/popup.js"></script>
