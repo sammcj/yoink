@@ -1,6 +1,10 @@
-# Yoink
+<p align="center">
+  <img src="logo.png" alt="Yoink" width="120" style="border-radius: 10%;">
+</p>
 
-Extract any website's design system into structured YAML that you can feed directly to AI coding assistants like Claude.
+<h1 align="center">Yoink</h1>
+
+<p align="center">Extract any website's design system into structured YAML that you can feed directly to AI coding assistants like Claude.</p>
 
 ## Why?
 
