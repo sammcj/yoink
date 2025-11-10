@@ -126,6 +126,26 @@ function showSuccess(message: string): void {
 }
 
 /**
+ * Checks if value looks like a color
+ */
+function looksLikeColor(value: string): boolean {
+  if (!value) return false;
+
+  const lower = value.toLowerCase().trim();
+
+  return (
+    lower.startsWith('#') ||
+    lower.startsWith('rgb') ||
+    lower.startsWith('hsl') ||
+    lower.startsWith('oklch') ||
+    lower.startsWith('lch') ||
+    lower.startsWith('lab') ||
+    lower === 'transparent' ||
+    lower === 'currentcolor'
+  );
+}
+
+/**
  * Recursively generates YAML for DOM tree structure
  */
 function generateDOMYAML(node: any, indentLevel: number): string {
