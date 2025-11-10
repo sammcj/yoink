@@ -11,7 +11,7 @@ const includeComponentsCheckbox = document.getElementById('includeComponentsChec
 const loadingState = document.getElementById('loadingState') as HTMLDivElement;
 const resultsSection = document.getElementById('resultsSection') as HTMLDivElement;
 const errorState = document.getElementById('errorState') as HTMLDivElement;
-const markdownPreview = document.getElementById('markdownPreview') as HTMLDivElement;
+const yamlPreview = document.getElementById('yamlPreview') as HTMLDivElement;
 const successMessage = document.getElementById('successMessage') as HTMLDivElement;
 
 let currentYAML = '';
@@ -97,7 +97,7 @@ function hideLoading(): void {
  */
 function displayYAML(yaml: string): void {
   currentYAML = yaml;
-  markdownPreview.textContent = yaml;
+  yamlPreview.textContent = yaml;
   resultsSection.classList.remove('hidden');
   errorState.classList.add('hidden');
 }
