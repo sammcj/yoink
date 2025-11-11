@@ -207,21 +207,22 @@ function isActualButton(element: Element): boolean {
     if (type === 'submit' || type === 'button') return true;
   }
 
-  // Rule 3: Elements with role="button" - BUT require button-like styling
+  // Rule 3: Elements with role="button" are usually intentional
   if (element.getAttribute('role') === 'button') {
-    // Must have either:
-    // - Button classes, OR
-    // - Visual button styling (background + padding + border-radius)
-    const hasButtonClasses = classes.includes('btn') || classes.includes('button');
-
+    // Accept role="button" more liberally - if developer marked it, it's likely a button
+    // Only exclude if it's clearly just text with no styling
     const hasBg = styles.backgroundColor !== 'rgba(0, 0, 0, 0)' && styles.backgroundColor !== 'transparent';
-    const hasPadding = parseFloat(styles.paddingLeft) >= 8 && parseFloat(styles.paddingRight) >= 8;
-    const hasRadius = parseFloat(styles.borderRadius) > 0 || parseFloat(styles.borderWidth) > 0;
-    const hasVisualButtonStyling = hasBg && hasPadding && hasRadius;
+    const hasBorder = parseFloat(styles.borderWidth) > 0;
+    const hasPadding = parseFloat(styles.paddingLeft) > 2 || parseFloat(styles.paddingRight) > 2;
+    const hasRadius = parseFloat(styles.borderRadius) > 0;
+    const hasCursor = styles.cursor === 'pointer';
 
-    // Must have button classes OR clear visual button styling
-    if (!hasButtonClasses && !hasVisualButtonStyling) return false;
+    // If it has ANY button-like characteristics, accept it
+    if (hasBg || hasBorder || hasRadius || (hasPadding && hasCursor)) {
+      return true;
+    }
 
+    // Even plain role="button" is probably intentional
     return true;
   }
 
@@ -297,7 +298,8 @@ export function extractButtons(): ButtonComponent[] {
   const buttons: ButtonComponent[] = [];
 
   // Query all potentially button-like elements
-  const buttonSelectors = 'button, [role="button"], a[class*="btn"], a[class*="button"], input[type="submit"], input[type="button"], div[role="button"]';
+  // Expanded to catch more patterns including data-testid, aria-labels, and generic clickable elements
+  const buttonSelectors = 'button, [role="button"], a[class*="btn"], a[class*="button"], input[type="submit"], input[type="button"], div[role="button"], [data-testid*="button"], [data-test*="button"], [aria-label*="utton"], span[role="button"]';
   const elements = document.querySelectorAll(buttonSelectors);
 
   elements.forEach(btn => {
