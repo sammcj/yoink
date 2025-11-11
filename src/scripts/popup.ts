@@ -257,8 +257,22 @@ function generateYAML(styles: any): string {
     yaml += `\n`;
   }
 
-  // Colors - with usage data
+  // Colors - with usage data and CSS variable mapping
   yaml += `colors:\n`;
+
+  // Build reverse mapping: color value -> CSS variable name
+  const colorToCssVar = new Map<string, string>();
+  if (styles.cssVariables) {
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+      if (lightValue && looksLikeColor(lightValue)) {
+        // Normalize color for matching
+        const normalized = lightValue.trim().toLowerCase();
+        colorToCssVar.set(normalized, varName.replace('--', ''));
+      }
+    }
+  }
+
   yaml += `  extracted:\n`;
   if (styles.colors && styles.colorUsage) {
     const topColors = styles.colors.slice(0, 15);
@@ -266,17 +280,89 @@ function generateYAML(styles: any): string {
       const usage = styles.colorUsage[color] || 0;
       yaml += `    - value: "${color}"\n`;
       yaml += `      usage-count: ${usage}\n`;
+
+      // Add CSS variable mapping if exists
+      const normalized = color.trim().toLowerCase();
+      const cssVar = colorToCssVar.get(normalized);
+      if (cssVar) {
+        yaml += `      css-var: "--${cssVar}"\n`;
+      }
     });
   }
 
-  // CSS Variables (if any colors)
-  if (styles.cssVariables) {
+  // CSS Variables - organized by type
+  if (styles.cssVariables && Object.keys(styles.cssVariables).length > 0) {
     yaml += `\n  css-variables:\n`;
+
+    // Group variables by semantic category
+    const colorVars: [string, string][] = [];
+    const spacingVars: [string, string][] = [];
+    const typographyVars: [string, string][] = [];
+    const otherVars: [string, string][] = [];
+
     for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-      if (lightValue && looksLikeColor(lightValue)) {
-        yaml += `    ${varName.replace('--', '')}: "${lightValue}"\n`;
+      const value = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+      if (!value) continue;
+
+      const cleanName = varName.replace('--', '');
+
+      // Categorize by name
+      if (looksLikeColor(value) && (
+        cleanName.includes('color') || cleanName.includes('bg') ||
+        cleanName.includes('border') || cleanName.includes('text') ||
+        cleanName.includes('fill') || cleanName.includes('gradient')
+      )) {
+        colorVars.push([cleanName, value]);
+      } else if (cleanName.includes('spacing') || cleanName.includes('space') ||
+                 cleanName.includes('gap') || cleanName.includes('padding') ||
+                 cleanName.includes('margin')) {
+        spacingVars.push([cleanName, value]);
+      } else if (cleanName.includes('font') || cleanName.includes('text-') ||
+                 cleanName.includes('line-height') || cleanName.includes('letter')) {
+        typographyVars.push([cleanName, value]);
+      } else if (looksLikeColor(value)) {
+        colorVars.push([cleanName, value]);
+      } else {
+        otherVars.push([cleanName, value]);
       }
+    }
+
+    // Output organized sections (limit to top 10 per category)
+    if (colorVars.length > 0) {
+      yaml += `    # Color variables\n`;
+      colorVars.slice(0, 10).forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
+      if (colorVars.length > 10) {
+        yaml += `    # ... and ${colorVars.length - 10} more color variables\n`;
+      }
+    }
+
+    if (spacingVars.length > 0) {
+      yaml += `\n    # Spacing variables\n`;
+      spacingVars.slice(0, 5).forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
+      if (spacingVars.length > 5) {
+        yaml += `    # ... and ${spacingVars.length - 5} more spacing variables\n`;
+      }
+    }
+
+    if (typographyVars.length > 0) {
+      yaml += `\n    # Typography variables\n`;
+      typographyVars.slice(0, 5).forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
+      if (typographyVars.length > 5) {
+        yaml += `    # ... and ${typographyVars.length - 5} more typography variables\n`;
+      }
+    }
+
+    if (otherVars.length > 0 && otherVars.length <= 5) {
+      yaml += `\n    # Other variables\n`;
+      otherVars.forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
     }
   }
   yaml += `\n`;
