@@ -186,6 +186,67 @@ function formatStateStyles(stateObj: any, indent: string): string {
 }
 
 /**
+ * Generates a semantic description of a component variant based on its styles.
+ * Highlights key visual characteristics to help understand what makes variants distinct.
+ */
+function generateVariantDescription(styles: any): string {
+  const parts: string[] = [];
+
+  // Add color information
+  if (styles.background && !isMeaninglessValue('background', styles.background)) {
+    const bg = styles.background.replace(/"/g, '');
+    parts.push(`${bg} background`);
+  }
+
+  if (styles.color && !isMeaninglessValue('color', styles.color)) {
+    const textColor = styles.color.replace(/"/g, '');
+    parts.push(`${textColor} text`);
+  }
+
+  // Add border information
+  if (styles.border && !isMeaninglessValue('border', styles.border)) {
+    const border = styles.border.replace(/"/g, '');
+    if (border.includes('none')) {
+      parts.push('no border');
+    } else {
+      parts.push('bordered');
+    }
+  }
+
+  // Add shadow/elevation
+  if (styles.boxShadow && !isMeaninglessValue('boxShadow', styles.boxShadow)) {
+    parts.push('elevated');
+  }
+
+  // Add size hints from padding/fontSize
+  if (styles.padding) {
+    const paddingVal = parseFloat(styles.padding);
+    if (paddingVal > 20) {
+      parts.push('large padding');
+    } else if (paddingVal < 8) {
+      parts.push('compact');
+    }
+  }
+
+  // Add rounded corners
+  if (styles.borderRadius && !isMeaninglessValue('borderRadius', styles.borderRadius)) {
+    const radius = parseFloat(styles.borderRadius);
+    if (radius > 20) {
+      parts.push('pill-shaped');
+    } else if (radius > 8) {
+      parts.push('rounded');
+    }
+  }
+
+  // If we have parts, format them into a description
+  if (parts.length > 0) {
+    return parts.join(', ');
+  }
+
+  return '';
+}
+
+/**
  * Recursively generates YAML for DOM tree structure
  */
 function generateDOMYAML(node: any, indentLevel: number): string {
@@ -688,6 +749,10 @@ function generateYAML(styles: any): string {
       yaml += `  buttons:\n`;
       styles.components.buttons.slice(0, 3).forEach((btn: any) => {
         yaml += `    - variant: ${btn.variant}\n`;
+        const description = generateVariantDescription(btn.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${btn.count}\n`;
         yaml += `      styles:\n`;
         // Only output meaningful style values (filter out transparent backgrounds, 0px, etc.)
@@ -740,6 +805,10 @@ function generateYAML(styles: any): string {
       yaml += `\n  cards:\n`;
       styles.components.cards.slice(0, 3).forEach((card: any) => {
         yaml += `    - variant: ${card.variant}\n`;
+        const description = generateVariantDescription(card.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${card.count}\n`;
         yaml += `      styles:\n`;
         if (!isMeaninglessValue('background', card.styles.background)) {
@@ -773,6 +842,10 @@ function generateYAML(styles: any): string {
       styles.components.inputs.slice(0, 5).forEach((input: any) => {
         yaml += `    - type: ${input.type}\n`;
         yaml += `      variant: ${input.variant}\n`;
+        const description = generateVariantDescription(input.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${input.count}\n`;
         yaml += `      styles:\n`;
         if (!isMeaninglessValue('background', input.styles.background)) {
@@ -809,6 +882,10 @@ function generateYAML(styles: any): string {
       yaml += `\n  navigation:\n`;
       styles.components.navigation.slice(0, 3).forEach((nav: any) => {
         yaml += `    - variant: ${nav.variant}\n`;
+        const description = generateVariantDescription(nav.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${nav.count}\n`;
         yaml += `      styles:\n`;
         yaml += `        color: "${nav.styles.color}"\n`;
@@ -931,6 +1008,10 @@ function generateYAML(styles: any): string {
       yaml += `\n  badges:\n`;
       styles.components.badges.slice(0, 5).forEach((badge: any) => {
         yaml += `    - variant: ${badge.variant}\n`;
+        const description = generateVariantDescription(badge.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${badge.count}\n`;
         yaml += `      styles:\n`;
         if (!isMeaninglessValue('background', badge.styles.background)) {
@@ -1039,6 +1120,10 @@ function generateYAML(styles: any): string {
       yaml += `\n  alerts:\n`;
       styles.components.alerts.forEach((alert: any) => {
         yaml += `    - variant: ${alert.variant}\n`;
+        const description = generateVariantDescription(alert.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${alert.count}\n`;
         yaml += `      styles:\n`;
         yaml += `        background: "${alert.styles.background}"\n`;
