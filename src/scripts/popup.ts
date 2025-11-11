@@ -151,6 +151,41 @@ function looksLikeColor(value: string): boolean {
 }
 
 /**
+ * Formats state styles for YAML output, prioritizing transition timing information
+ */
+function formatStateStyles(stateObj: any, indent: string): string {
+  let yaml = '';
+  const entries = Object.entries(stateObj);
+
+  // Sort entries to show transition info first
+  const sorted = entries.sort(([keyA], [keyB]) => {
+    const priorityOrder = ['transitionDuration', 'transitionEasing', 'hasTransition', 'transition'];
+    const indexA = priorityOrder.indexOf(keyA);
+    const indexB = priorityOrder.indexOf(keyB);
+
+    // If both are in priority list, sort by priority
+    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+    // If only A is in priority, A comes first
+    if (indexA !== -1) return -1;
+    // If only B is in priority, B comes first
+    if (indexB !== -1) return 1;
+    // Otherwise maintain order
+    return 0;
+  });
+
+  sorted.forEach(([key, value]) => {
+    // Skip 'transition' if we have parsed duration/easing (to avoid redundancy)
+    if (key === 'transition' && stateObj.transitionDuration && stateObj.transitionEasing) {
+      return; // Skip full transition string when we have parsed values
+    }
+
+    yaml += `${indent}${key}: "${value}"\n`;
+  });
+
+  return yaml;
+}
+
+/**
  * Recursively generates YAML for DOM tree structure
  */
 function generateDOMYAML(node: any, indentLevel: number): string {
@@ -679,30 +714,22 @@ function generateYAML(styles: any): string {
 
           if (states.hover) {
             yaml += `        hover:\n`;
-            Object.entries(states.hover).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.hover, '          ');
           }
 
           if (states.focus) {
             yaml += `        focus:\n`;
-            Object.entries(states.focus).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.focus, '          ');
           }
 
           if (states.active) {
             yaml += `        active:\n`;
-            Object.entries(states.active).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.active, '          ');
           }
 
           if (states.disabled) {
             yaml += `        disabled:\n`;
-            Object.entries(states.disabled).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.disabled, '          ');
           }
         }
       });
@@ -734,9 +761,7 @@ function generateYAML(styles: any): string {
           yaml += `      states:\n`;
           if (card.states.hover) {
             yaml += `        hover:\n`;
-            Object.entries(card.states.hover).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(card.states.hover, '          ');
           }
         }
       });
@@ -769,15 +794,11 @@ function generateYAML(styles: any): string {
           yaml += `      states:\n`;
           if (input.states.focus) {
             yaml += `        focus:\n`;
-            Object.entries(input.states.focus).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(input.states.focus, '          ');
           }
           if (input.states.disabled) {
             yaml += `        disabled:\n`;
-            Object.entries(input.states.disabled).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(input.states.disabled, '          ');
           }
         }
       });
@@ -798,9 +819,7 @@ function generateYAML(styles: any): string {
           yaml += `      states:\n`;
           if (nav.states.hover) {
             yaml += `        hover:\n`;
-            Object.entries(nav.states.hover).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(nav.states.hover, '          ');
           }
         }
       });
@@ -959,9 +978,7 @@ function generateYAML(styles: any): string {
         if (tab.states && tab.states.hover) {
           yaml += `      states:\n`;
           yaml += `        hover:\n`;
-          Object.entries(tab.states.hover).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+          yaml += formatStateStyles(tab.states.hover, '          ');
         }
       });
     }
@@ -1044,9 +1061,7 @@ function generateYAML(styles: any): string {
         if (search.states && search.states.focus) {
           yaml += `      states:\n`;
           yaml += `        focus:\n`;
-          Object.entries(search.states.focus).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+          yaml += formatStateStyles(search.states.focus, '          ');
         }
       });
     }
@@ -1241,9 +1256,7 @@ function generateYAML(styles: any): string {
         if (combo.states && combo.states.focus) {
           yaml += `      states:\n`;
           yaml += `        focus:\n`;
-          Object.entries(combo.states.focus).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+          yaml += formatStateStyles(combo.states.focus, '          ');
         }
       });
     }
