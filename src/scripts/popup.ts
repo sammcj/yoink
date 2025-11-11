@@ -948,24 +948,37 @@ function generateYAML(styles: any): string {
           yaml += `        border: "${table.styles.border}"\n`;
         }
         if (table.styles.header) {
-          yaml += `        header:\n`;
-          if (!isMeaninglessValue('background', table.styles.header.background)) {
-            yaml += `          background: "${table.styles.header.background}"\n`;
-          }
-          if (table.styles.header.color) {
-            yaml += `          color: "${table.styles.header.color}"\n`;
-          }
-          if (table.styles.header.fontWeight) {
-            yaml += `          font-weight: ${table.styles.header.fontWeight}\n`;
+          // Check if there are any meaningful header properties before outputting header
+          const hasHeaderBg = !isMeaninglessValue('background', table.styles.header.background);
+          const hasHeaderColor = table.styles.header.color;
+          const hasHeaderWeight = table.styles.header.fontWeight;
+
+          if (hasHeaderBg || hasHeaderColor || hasHeaderWeight) {
+            yaml += `        header:\n`;
+            if (hasHeaderBg) {
+              yaml += `          background: "${table.styles.header.background}"\n`;
+            }
+            if (hasHeaderColor) {
+              yaml += `          color: "${table.styles.header.color}"\n`;
+            }
+            if (hasHeaderWeight) {
+              yaml += `          font-weight: ${table.styles.header.fontWeight}\n`;
+            }
           }
         }
         if (table.styles.cell) {
-          yaml += `        cell:\n`;
-          if (!isMeaninglessValue('padding', table.styles.cell.padding)) {
-            yaml += `          padding: ${table.styles.cell.padding}\n`;
-          }
-          if (!isMeaninglessValue('border', table.styles.cell.borderBottom)) {
-            yaml += `          border-bottom: "${table.styles.cell.borderBottom}"\n`;
+          // Check if there are any meaningful cell properties before outputting header
+          const hasPadding = !isMeaninglessValue('padding', table.styles.cell.padding);
+          const hasBorder = !isMeaninglessValue('border', table.styles.cell.borderBottom);
+
+          if (hasPadding || hasBorder) {
+            yaml += `        cell:\n`;
+            if (hasPadding) {
+              yaml += `          padding: ${table.styles.cell.padding}\n`;
+            }
+            if (hasBorder) {
+              yaml += `          border-bottom: "${table.styles.cell.borderBottom}"\n`;
+            }
           }
         }
       });

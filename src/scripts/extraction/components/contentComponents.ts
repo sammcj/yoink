@@ -584,9 +584,23 @@ function inferCardVariant(card: HTMLElement): string {
   const isTransparent = bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent';
   const isSemiTransparent = bgColor.includes('rgba') && !isTransparent;
 
+  // Helper to detect if color is a neutral gray/black/white
+  const isNeutral = (color: string) => {
+    const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!match) return true;
+    const [_, r, g, b] = match.map(Number);
+    // Check if RGB values are similar (neutral gray)
+    const maxDiff = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
+    return maxDiff < 20; // If difference between channels is small, it's a neutral
+  };
+
+  // Check if this is a colored card (not neutral)
+  const isColored = !isTransparent && !isSemiTransparent && !isNeutral(bgColor);
+
   // Build variant name based on characteristics
   if (hasMedia) {
     if (isSemiTransparent) return 'media-overlay';
+    if (isColored) return 'media-accent';
     return 'media';
   }
 
@@ -594,6 +608,7 @@ function inferCardVariant(card: HTMLElement): string {
   if (hasBorder && !hasShadow) return 'outlined';
   if (isSemiTransparent) return 'overlay';
   if (isTransparent) return 'ghost';
+  if (isColored) return 'accent';
 
   return 'default';
 }
