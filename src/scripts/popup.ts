@@ -390,6 +390,19 @@ function generateYAML(styles: any): string {
   if (styles.cssVariables && Object.keys(styles.cssVariables).length > 0) {
     yaml += `\n  css-variables:\n`;
 
+    // Helper to filter out meaningless CSS variables
+    const isMeaninglessCssVar = (name: string, value: string): boolean => {
+      // Skip very short non-semantic names (1-3 chars) with simple numeric values
+      if (name.length <= 3 && /^[0-9.]+$/.test(value)) {
+        return true;
+      }
+      // Skip variables that are just numbers without context
+      if (/^[a-z]{1,3}$/.test(name) && value === '1') {
+        return true;
+      }
+      return false;
+    };
+
     // Group variables by semantic category
     const colorVars: [string, string][] = [];
     const spacingVars: [string, string][] = [];
@@ -401,6 +414,11 @@ function generateYAML(styles: any): string {
       if (!value) continue;
 
       const cleanName = varName.replace('--', '');
+
+      // Skip meaningless variables
+      if (isMeaninglessCssVar(cleanName, value)) {
+        continue;
+      }
 
       // Categorize by name
       if (looksLikeColor(value) && (
@@ -491,6 +509,7 @@ function generateYAML(styles: any): string {
       yaml += `      size: ${heading.fontSize}\n`;
       yaml += `      weight: ${heading.fontWeight}\n`;
       yaml += `      line-height: ${heading.lineHeight}\n`;
+      if (heading.usage) yaml += `      usage: ${heading.usage}\n`;
       if (heading.count) yaml += `      count: ${heading.count}\n`;
       if (heading.examples && heading.examples[0]) {
         yaml += `      example: "${heading.examples[0].substring(0, 50)}"\n`;
