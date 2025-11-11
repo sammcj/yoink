@@ -68,13 +68,25 @@ export function extractInputs(): InputComponent[] {
   const seen = new Map<string, InputComponent>();
 
   // Expanded to catch custom input implementations (contenteditable, role="textbox", etc.)
-  const inputSelectors = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select, [role="textbox"], [role="searchbox"], [role="combobox"], [contenteditable="true"], [class*="input"]:not(input)';
+  const inputSelectors = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select, [role="textbox"], [role="searchbox"], [role="combobox"], [contenteditable="true"]';
   const elements = document.querySelectorAll(inputSelectors);
 
   elements.forEach(input => {
     const styles = getComputedStyle(input);
     const el = input as HTMLElement;
-    const inputType = (input as HTMLInputElement).type || el.tagName.toLowerCase();
+    const tagName = el.tagName.toLowerCase();
+
+    // Skip elements that are clearly not inputs (divs, labels, spans, etc.)
+    // Only include actual input elements, textareas, selects, and semantic input roles
+    const isActualInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+    const hasInputRole = el.hasAttribute('role') && ['textbox', 'searchbox', 'combobox'].includes(el.getAttribute('role') || '');
+    const isContentEditable = el.getAttribute('contenteditable') === 'true';
+
+    if (!isActualInput && !hasInputRole && !isContentEditable) {
+      return; // Skip non-input elements
+    }
+
+    const inputType = (input as HTMLInputElement).type || tagName;
 
     const signature = createStyleSignature(el);
 
