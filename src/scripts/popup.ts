@@ -897,7 +897,8 @@ function generateYAML(styles: any): string {
     styles.gradients.slice(0, 5).forEach((gradient: any) => {
       yaml += `  - type: ${gradient.type}\n`;
       yaml += `    count: ${gradient.count}\n`;
-      yaml += `    value: "${gradient.value.substring(0, 100)}${gradient.value.length > 100 ? '...' : ''}"\n`;
+      // Don't truncate gradient values - they need to be complete for AI agents to recreate
+      yaml += `    value: "${gradient.value}"\n`;
     });
     yaml += `\n`;
   }
