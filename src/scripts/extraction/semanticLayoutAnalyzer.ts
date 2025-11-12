@@ -171,8 +171,17 @@ function extractLayoutRegions(): LayoutRegion[] {
     const el = document.querySelector(selector);
     if (el && isVisible(el)) {
       const rect = el.getBoundingClientRect();
+      const styles = getCachedComputedStyle(el);
+
+      // Get actual dimensions (prefer computed styles over rect)
+      const computedWidth = parseFloat(styles.width);
+      const computedHeight = parseFloat(styles.height);
+      const actualWidth = computedWidth > 0 ? computedWidth : rect.width;
+      const actualHeight = computedHeight > 0 ? computedHeight : rect.height;
+
       // Validate it's actually sidebar-like (narrow vertical section)
-      if (rect.width > 100 && rect.width < 500 && rect.height > 200) {
+      // More lenient: 50px-600px width, 100px+ height
+      if (actualWidth > 50 && actualWidth < 600 && actualHeight > 100) {
         sidebar = el;
         break;
       }
@@ -194,16 +203,18 @@ function extractLayoutRegions(): LayoutRegion[] {
     if (sidebar.querySelector('form, input')) contains.push('search');
     if (sidebar.querySelector('[class*="logo"], img[alt*="logo" i]')) contains.push('logo');
 
-    // Use computed width if rect width seems wrong
+    // Use computed dimensions (prefer over getBoundingClientRect)
     const computedWidth = parseFloat(styles.width);
+    const computedHeight = parseFloat(styles.height);
     const width = computedWidth > 0 ? computedWidth : rect.width;
+    const height = computedHeight > 0 ? computedHeight : rect.height;
 
     regions.push({
       name: 'sidebar',
       role: 'navigation',
       position,
       width: `${Math.round(width)}px`,
-      height: `${Math.round(rect.height)}px`,
+      height: `${Math.round(height)}px`,
       contains: contains.length > 0 ? contains : ['navigation'],
       background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined,
       zIndex: styles.zIndex !== 'auto' ? styles.zIndex : undefined
@@ -224,8 +235,15 @@ function extractLayoutRegions(): LayoutRegion[] {
     const el = document.querySelector(selector);
     if (el && isVisible(el)) {
       const rect = el.getBoundingClientRect();
+      const styles = getCachedComputedStyle(el);
+
+      // Get actual dimensions
+      const computedHeight = parseFloat(styles.height);
+      const actualHeight = computedHeight > 0 ? computedHeight : rect.height;
+
       // Validate it's actually topbar-like (horizontal, near top)
-      if (rect.top < 100 && rect.width > window.innerWidth * 0.5 && rect.height < 200) {
+      // More lenient: top < 150px, width > 40% viewport, height 20-300px
+      if (rect.top < 150 && rect.width > window.innerWidth * 0.4 && actualHeight > 20 && actualHeight < 300) {
         topbar = el;
         break;
       }
@@ -242,16 +260,18 @@ function extractLayoutRegions(): LayoutRegion[] {
     if (topbar.querySelector('[class*="logo"], img')) contains.push('branding');
     if (topbar.querySelector('input, [class*="search"]')) contains.push('search');
 
-    // Use computed dimensions if rect seems wrong
+    // Use computed dimensions (prefer over getBoundingClientRect)
     const computedHeight = parseFloat(styles.height);
+    const computedWidth = parseFloat(styles.width);
     const height = computedHeight > 0 ? computedHeight : rect.height;
+    const width = computedWidth > 0 ? computedWidth : rect.width;
 
     regions.push({
       name: 'topbar',
       role: 'banner',
       position: 'top',
       height: `${Math.round(height)}px`,
-      width: `${Math.round(rect.width)}px`,
+      width: `${Math.round(width)}px`,
       contains: contains.length > 0 ? contains : ['branding', 'navigation'],
       background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined,
       zIndex: styles.zIndex !== 'auto' ? styles.zIndex : undefined
@@ -286,15 +306,18 @@ function extractLayoutRegions(): LayoutRegion[] {
     if (main.querySelector('article, [class*="card"]')) contains.push('cards');
     if (main.querySelector('[class*="grid"]')) contains.push('grid-layout');
 
-    // Use computed width if rect width seems wrong
+    // Use computed dimensions (prefer over getBoundingClientRect)
     const computedWidth = parseFloat(styles.width);
+    const computedHeight = parseFloat(styles.height);
     const width = computedWidth > 0 ? computedWidth : rect.width;
+    const height = computedHeight > 0 ? computedHeight : rect.height;
 
     regions.push({
       name: 'main',
       role: 'main',
       position: 'center',
       width: `${Math.round(width)}px`,
+      height: height > 0 ? `${Math.round(height)}px` : undefined,
       contains: contains.length > 0 ? contains : ['content'],
       background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined
     });
@@ -306,15 +329,18 @@ function extractLayoutRegions(): LayoutRegion[] {
     const styles = getCachedComputedStyle(footer);
     const rect = footer.getBoundingClientRect();
 
-    // Use computed height if rect seems wrong
+    // Use computed dimensions (prefer over getBoundingClientRect)
     const computedHeight = parseFloat(styles.height);
+    const computedWidth = parseFloat(styles.width);
     const height = computedHeight > 0 ? computedHeight : rect.height;
+    const width = computedWidth > 0 ? computedWidth : rect.width;
 
     regions.push({
       name: 'footer',
       role: 'contentinfo',
       position: 'bottom',
       height: `${Math.round(height)}px`,
+      width: width > 0 ? `${Math.round(width)}px` : undefined,
       background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined
     });
   }
