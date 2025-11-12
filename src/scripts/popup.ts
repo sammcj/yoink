@@ -248,8 +248,13 @@ function generateVariantDescription(styles: any): string {
 
 /**
  * Recursively generates YAML for DOM tree structure
+ * NOTE: This function is now replaced by semantic layout in the output,
+ * but kept for backwards compatibility and potential future use.
+ * @deprecated - replaced by semantic layout
  */
-function generateDOMYAML(node: any, indentLevel: number): string {
+// @ts-expect-error - Keeping for backwards compatibility
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _generateDOMYAML(node: any, indentLevel: number): string {
   const indent = '  '.repeat(indentLevel);
   let yaml = '';
 
@@ -319,7 +324,7 @@ function generateDOMYAML(node: any, indentLevel: number): string {
     yaml += `${indent}children:\n`;
     node.children.forEach((child: any) => {
       yaml += `${indent}  -\n`;
-      yaml += generateDOMYAML(child, indentLevel + 2);
+      yaml += _generateDOMYAML(child, indentLevel + 2);
     });
   }
 
@@ -346,44 +351,133 @@ function generateYAML(styles: any): string {
   }
   yaml += `\n`;
 
-  // DOM Structure - hierarchical component tree
-  if (styles.domStructure?.tree) {
-    yaml += `dom-structure:\n`;
-    yaml += generateDOMYAML(styles.domStructure.tree, 1);
+  // SEMANTIC LAYOUT - high-level layout description (REPLACES verbose DOM structure)
+  if (styles.semanticLayout) {
+    yaml += `layout:\n`;
+    yaml += `  structure: ${styles.semanticLayout.structure}\n`;
+
+    if (styles.semanticLayout.regions && styles.semanticLayout.regions.length > 0) {
+      yaml += `  regions:\n`;
+      styles.semanticLayout.regions.forEach((region: any) => {
+        yaml += `    ${region.name}:\n`;
+        yaml += `      role: ${region.role}\n`;
+        if (region.position) yaml += `      position: ${region.position}\n`;
+        if (region.width) yaml += `      width: ${region.width}\n`;
+        if (region.height) yaml += `      height: ${region.height}\n`;
+        if (region.contains && region.contains.length > 0) {
+          yaml += `      contains: [${region.contains.join(', ')}]\n`;
+        }
+        if (region.background && region.background !== 'rgba(0, 0, 0, 0)') {
+          yaml += `      background: "${region.background}"\n`;
+        }
+      });
+    }
+
+    if (styles.semanticLayout.measurements) {
+      yaml += `  measurements:\n`;
+      const m = styles.semanticLayout.measurements;
+      if (m.sidebarWidth) yaml += `    sidebar-width: ${m.sidebarWidth}\n`;
+      if (m.topbarHeight) yaml += `    topbar-height: ${m.topbarHeight}\n`;
+      if (m.contentPadding) yaml += `    content-padding: ${m.contentPadding}\n`;
+      if (m.sectionGap) yaml += `    section-gap: ${m.sectionGap}\n`;
+      if (m.rowHeight) yaml += `    row-height: ${m.rowHeight}\n`;
+      if (m.columnWidths && Object.keys(m.columnWidths).length > 0) {
+        yaml += `    column-widths:\n`;
+        Object.entries(m.columnWidths).forEach(([col, width]) => {
+          yaml += `      ${col}: ${width}\n`;
+        });
+      }
+    }
+
+    if (styles.semanticLayout.gridPattern) {
+      yaml += `  grid-pattern: "${styles.semanticLayout.gridPattern}"\n`;
+    }
+
     yaml += `\n`;
   }
 
-  // Colors - with usage data and CSS variable mapping
+  // SEMANTIC COLORS - with context and usage patterns
   yaml += `colors:\n`;
 
-  // Build reverse mapping: color value -> CSS variable name
-  const colorToCssVar = new Map<string, string>();
-  if (styles.cssVariables) {
-    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-      if (lightValue && looksLikeColor(lightValue)) {
-        // Normalize color for matching
-        const normalized = lightValue.trim().toLowerCase();
-        colorToCssVar.set(normalized, varName.replace('--', ''));
-      }
+  // Semantic tokens section (NEW)
+  if (styles.semanticColors) {
+    yaml += `  semantic-tokens:\n`;
+
+    // Backgrounds
+    if (Object.keys(styles.semanticColors.semantic.backgrounds).length > 0) {
+      yaml += `    backgrounds:\n`;
+      Object.entries(styles.semanticColors.semantic.backgrounds).slice(0, 5).forEach(([name, color]) => {
+        yaml += `      ${name}: "${color}"\n`;
+      });
     }
-  }
 
-  yaml += `  extracted:\n`;
-  if (styles.colors && styles.colorUsage) {
-    const topColors = styles.colors.slice(0, 15);
-    topColors.forEach((color: string) => {
-      const usage = styles.colorUsage[color] || 0;
-      yaml += `    - value: "${color}"\n`;
-      yaml += `      usage-count: ${usage}\n`;
+    // Text
+    if (Object.keys(styles.semanticColors.semantic.text).length > 0) {
+      yaml += `    text:\n`;
+      Object.entries(styles.semanticColors.semantic.text).slice(0, 5).forEach(([name, color]) => {
+        yaml += `      ${name}: "${color}"\n`;
+      });
+    }
 
-      // Add CSS variable mapping if exists
-      const normalized = color.trim().toLowerCase();
-      const cssVar = colorToCssVar.get(normalized);
-      if (cssVar) {
-        yaml += `      css-var: "--${cssVar}"\n`;
+    // Borders
+    if (Object.keys(styles.semanticColors.semantic.borders).length > 0) {
+      yaml += `    borders:\n`;
+      Object.entries(styles.semanticColors.semantic.borders).slice(0, 3).forEach(([name, color]) => {
+        yaml += `      ${name}: "${color}"\n`;
+      });
+    }
+
+    // Interactive
+    if (Object.keys(styles.semanticColors.semantic.interactive).length > 0) {
+      yaml += `    interactive:\n`;
+      Object.entries(styles.semanticColors.semantic.interactive).forEach(([name, color]) => {
+        yaml += `      ${name}: "${color}"\n`;
+      });
+    }
+
+    // Raw colors with context
+    yaml += `\n  raw-with-context:\n`;
+    styles.semanticColors.rawWithContext.slice(0, 12).forEach((ctx: any) => {
+      yaml += `    - value: "${ctx.color}"\n`;
+      yaml += `      usage-count: ${ctx.usageCount}\n`;
+      if (ctx.usedFor && ctx.usedFor.length > 0) {
+        yaml += `      used-for: [${ctx.usedFor.join(', ')}]\n`;
+      }
+      if (ctx.semanticName) {
+        yaml += `      semantic-token: ${ctx.semanticName}\n`;
+      }
+      if (ctx.cssVariable) {
+        yaml += `      css-variable: ${ctx.cssVariable}\n`;
       }
     });
+  } else {
+    // Fallback to original color extraction if semantic colors not available
+    const colorToCssVar = new Map<string, string>();
+    if (styles.cssVariables) {
+      for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+        const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+        if (lightValue && looksLikeColor(lightValue)) {
+          const normalized = lightValue.trim().toLowerCase();
+          colorToCssVar.set(normalized, varName.replace('--', ''));
+        }
+      }
+    }
+
+    yaml += `  extracted:\n`;
+    if (styles.colors && styles.colorUsage) {
+      const topColors = styles.colors.slice(0, 15);
+      topColors.forEach((color: string) => {
+        const usage = styles.colorUsage[color] || 0;
+        yaml += `    - value: "${color}"\n`;
+        yaml += `      usage-count: ${usage}\n`;
+
+        const normalized = color.trim().toLowerCase();
+        const cssVar = colorToCssVar.get(normalized);
+        if (cssVar) {
+          yaml += `      css-var: "--${cssVar}"\n`;
+        }
+      });
+    }
   }
 
   // CSS Variables - organized by type
@@ -642,46 +736,33 @@ function generateYAML(styles: any): string {
     yaml += `\n`;
   }
 
-  // Z-Index Hierarchy
-  if (styles.zIndex) {
+  // Z-Index Hierarchy (SIMPLIFIED - only show ranges by layer)
+  if (styles.zIndex && styles.zIndex.range) {
     yaml += `z-index:\n`;
-    if (styles.zIndex.range) {
-      yaml += `  range: [${styles.zIndex.range.min}, ${styles.zIndex.range.max}]\n`;
-    }
+    yaml += `  range: [${styles.zIndex.range.min}, ${styles.zIndex.range.max}]\n`;
 
+    // Only show summary by layer instead of every value
     if (styles.zIndex.layers) {
       yaml += `  layers:\n`;
 
       if (styles.zIndex.layers.base && styles.zIndex.layers.base.length > 0) {
-        yaml += `    base:  # z-index 1-10\n`;
-        styles.zIndex.layers.base.forEach((item: any) => {
-          yaml += `      - z-index: ${item.zIndex}\n`;
-          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
-        });
+        const values = styles.zIndex.layers.base.map((item: any) => item.zIndex);
+        yaml += `    base: [${values.join(', ')}]  # General stacking (1-10)\n`;
       }
 
       if (styles.zIndex.layers.dropdown && styles.zIndex.layers.dropdown.length > 0) {
-        yaml += `    dropdown:  # z-index 10-100\n`;
-        styles.zIndex.layers.dropdown.forEach((item: any) => {
-          yaml += `      - z-index: ${item.zIndex}\n`;
-          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
-        });
+        const values = styles.zIndex.layers.dropdown.map((item: any) => item.zIndex);
+        yaml += `    dropdown: [${values.join(', ')}]  # Dropdowns, popovers (10-100)\n`;
       }
 
       if (styles.zIndex.layers.modal && styles.zIndex.layers.modal.length > 0) {
-        yaml += `    modal:  # z-index 100-1000\n`;
-        styles.zIndex.layers.modal.forEach((item: any) => {
-          yaml += `      - z-index: ${item.zIndex}\n`;
-          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
-        });
+        const values = styles.zIndex.layers.modal.map((item: any) => item.zIndex);
+        yaml += `    modal: [${values.join(', ')}]  # Modal dialogs (100-1000)\n`;
       }
 
       if (styles.zIndex.layers.toast && styles.zIndex.layers.toast.length > 0) {
-        yaml += `    toast:  # z-index 1000+\n`;
-        styles.zIndex.layers.toast.forEach((item: any) => {
-          yaml += `      - z-index: ${item.zIndex}\n`;
-          yaml += `        contexts: [${item.contexts.join(', ')}]\n`;
-        });
+        const values = styles.zIndex.layers.toast.map((item: any) => item.zIndex);
+        yaml += `    toast: [${values.join(', ')}]  # Toasts, notifications (1000+)\n`;
       }
     }
 
@@ -719,6 +800,71 @@ function generateYAML(styles: any): string {
         yaml += `      easing: "${t.easing}"\n`;
         if (t.delay !== '0s') yaml += `      delay: ${t.delay}\n`;
         yaml += `      usage-count: ${t.count}\n`;
+      });
+    }
+
+    yaml += `\n`;
+  }
+
+  // INTERACTION PATTERNS (NEW) - hover, active, focus states
+  if (styles.interactionPatterns) {
+    yaml += `interaction-patterns:\n`;
+
+    // Timing configuration
+    yaml += `  timing:\n`;
+    yaml += `    default-duration: ${styles.interactionPatterns.timing.defaultDuration}\n`;
+    if (styles.interactionPatterns.timing.commonDurations.length > 0) {
+      yaml += `    common-durations: [${styles.interactionPatterns.timing.commonDurations.join(', ')}]\n`;
+    }
+    yaml += `    default-easing: ${styles.interactionPatterns.timing.defaultEasing}\n`;
+    if (styles.interactionPatterns.timing.commonEasings.length > 0) {
+      yaml += `    common-easings:\n`;
+      styles.interactionPatterns.timing.commonEasings.forEach((easing: string) => {
+        yaml += `      - "${easing}"\n`;
+      });
+    }
+
+    // Component states
+    if (styles.interactionPatterns.components && styles.interactionPatterns.components.length > 0) {
+      yaml += `\n  component-states:\n`;
+      styles.interactionPatterns.components.forEach((comp: any) => {
+        yaml += `    ${comp.componentType}:\n`;
+        yaml += `      count: ${comp.count}\n`;
+
+        if (comp.states.default) {
+          yaml += `      default:\n`;
+          Object.entries(comp.states.default).forEach(([key, value]) => {
+            if (value) yaml += `        ${key}: "${value}"\n`;
+          });
+        }
+
+        if (comp.states.hover) {
+          yaml += `      hover:\n`;
+          Object.entries(comp.states.hover).forEach(([key, value]) => {
+            if (value) yaml += `        ${key}: "${value}"\n`;
+          });
+        }
+
+        if (comp.states.focus) {
+          yaml += `      focus:\n`;
+          Object.entries(comp.states.focus).forEach(([key, value]) => {
+            if (value) yaml += `        ${key}: "${value}"\n`;
+          });
+        }
+
+        if (comp.states.active) {
+          yaml += `      active:\n`;
+          Object.entries(comp.states.active).forEach(([key, value]) => {
+            if (value) yaml += `        ${key}: "${value}"\n`;
+          });
+        }
+
+        if (comp.states.disabled) {
+          yaml += `      disabled:\n`;
+          Object.entries(comp.states.disabled).forEach(([key, value]) => {
+            if (value) yaml += `        ${key}: "${value}"\n`;
+          });
+        }
       });
     }
 

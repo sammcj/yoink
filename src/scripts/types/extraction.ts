@@ -786,6 +786,144 @@ export interface ScrollbarStyle {
 }
 
 // ============================================================================
+// Semantic Layout Types (NEW)
+// ============================================================================
+
+/**
+ * Layout structure type classification
+ */
+export type LayoutStructureType =
+  | 'sidebar-content'
+  | 'three-column'
+  | 'centered'
+  | 'dashboard'
+  | 'split-view'
+  | 'single-column'
+  | 'grid-layout'
+  | 'custom';
+
+/**
+ * Semantic region in the layout
+ */
+export interface LayoutRegion {
+  name: string;
+  role: string;
+  position?: 'left' | 'right' | 'top' | 'bottom' | 'center';
+  width?: string;
+  height?: string;
+  contains?: string[];
+  background?: string;
+  zIndex?: string;
+}
+
+/**
+ * Layout measurements for major sections
+ */
+export interface LayoutMeasurements {
+  sidebarWidth?: string;
+  topbarHeight?: string;
+  contentPadding?: string;
+  sectionGap?: string;
+  rowHeight?: string;
+  columnWidths?: Record<string, string>;
+}
+
+/**
+ * High-level semantic layout description
+ */
+export interface SemanticLayout {
+  structure: LayoutStructureType;
+  regions: LayoutRegion[];
+  measurements: LayoutMeasurements;
+  gridPattern?: string;
+}
+
+// ============================================================================
+// Semantic Color Types (NEW)
+// ============================================================================
+
+/**
+ * Color usage context with semantic information
+ */
+export interface ColorUsageContext {
+  color: string;
+  usageCount: number;
+  usedFor: string[];
+  semanticName?: string;
+  cssVariable?: string;
+}
+
+/**
+ * Semantic color tokens organized by purpose
+ */
+export interface SemanticColorTokens {
+  backgrounds: Record<string, string>;
+  text: Record<string, string>;
+  borders: Record<string, string>;
+  interactive: Record<string, string>;
+}
+
+/**
+ * Complete semantic color analysis
+ */
+export interface SemanticColorAnalysis {
+  semantic: SemanticColorTokens;
+  rawWithContext: ColorUsageContext[];
+}
+
+// ============================================================================
+// Interaction State Types (NEW)
+// ============================================================================
+
+/**
+ * State styles for a specific interaction
+ */
+export interface InteractionState {
+  backgroundColor?: string;
+  color?: string;
+  opacity?: string;
+  transform?: string;
+  boxShadow?: string;
+  borderColor?: string;
+  outline?: string;
+  transition?: string;
+}
+
+/**
+ * Interaction states for a component type
+ */
+export interface ComponentInteractionStates {
+  componentType: string;
+  selector: string;
+  count: number;
+  states: {
+    default?: InteractionState;
+    hover?: InteractionState;
+    active?: InteractionState;
+    focus?: InteractionState;
+    disabled?: InteractionState;
+  };
+}
+
+/**
+ * Global interaction timing configuration
+ */
+export interface InteractionTiming {
+  defaultDuration: string;
+  commonDurations: string[];
+  defaultEasing: string;
+  commonEasings: string[];
+}
+
+/**
+ * Complete interaction patterns analysis
+ */
+export interface InteractionPatterns {
+  timing: InteractionTiming;
+  components: ComponentInteractionStates[];
+}
+
+// ============================================================================
 // Main Extraction Result Type
 // ============================================================================
 
@@ -832,4 +970,8 @@ export interface StyleExtraction {
   animations?: AnimationExtraction;
   domStructure?: DOMTreeExtraction;
   maturityAnalysis?: MaturityAnalysis;
+  // NEW: Semantic extractors (only if includeComponents = true)
+  semanticLayout?: SemanticLayout;
+  semanticColors?: SemanticColorAnalysis;
+  interactionPatterns?: InteractionPatterns;
 }
