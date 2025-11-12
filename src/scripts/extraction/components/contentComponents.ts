@@ -208,72 +208,110 @@ export function extractCards(): CardVariant[] {
       duplicates.forEach((card, index) => {
         const styles = card.styles;
         const border = parseFloat((styles.border || '0px').toString());
+        const borderRadius = parseFloat((styles.borderRadius || '0px').toString());
         const padding = parseFloat((styles.padding || '0px').toString());
         const hasShadow = styles.boxShadow && styles.boxShadow !== 'none';
-        const hasBackground = styles.background && styles.background !== 'rgba(0, 0, 0, 0)' && styles.background !== 'transparent';
 
-        // Analyze visual weight to create descriptive suffix
-        let suffix = '';
-
-        // Primary characteristic: border
-        if (border > 1.5) {
-          suffix = 'thick-border';
-        } else if (border > 0) {
-          suffix = 'thin-border';
+        // Extract border color from border string (e.g., "1px solid rgb(182, 183, 184)")
+        const borderColorMatch = (styles.border || '').toString().match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        let borderBrightness = 0;
+        if (borderColorMatch) {
+          const [_, r, g, b] = borderColorMatch.map(Number);
+          borderBrightness = (r + g + b) / 3; // Average brightness
         }
 
-        // Secondary characteristic: padding
-        if (!suffix) {
-          if (padding > 12) {
-            suffix = 'padded';
-          } else if (padding > 0) {
-            suffix = 'compact';
+        // Build suffix from multiple characteristics
+        const characteristics: string[] = [];
+
+        // Primary: border thickness
+        if (border > 1.5) {
+          characteristics.push('thick-border');
+        } else if (border > 0) {
+          characteristics.push('thin-border');
+        }
+
+        // Secondary: padding
+        if (padding > 12) {
+          characteristics.push('padded');
+        } else if (padding > 4) {
+          characteristics.push('compact');
+        } else if (padding > 0) {
+          characteristics.push('tight');
+        }
+
+        // Tertiary: border radius
+        if (borderRadius > 8) {
+          characteristics.push('rounded');
+        } else if (borderRadius > 0 && borderRadius <= 3) {
+          characteristics.push('sharp');
+        }
+
+        // Quaternary: border color (if border exists)
+        if (border > 0 && borderBrightness > 0) {
+          if (borderBrightness > 150) {
+            characteristics.push('light');
+          } else if (borderBrightness > 50) {
+            characteristics.push('medium');
+          } else {
+            characteristics.push('dark');
           }
         }
 
-        // Tertiary: shadow
-        if (!suffix && hasShadow) {
-          suffix = 'elevated';
+        // Quinary: shadow
+        if (hasShadow) {
+          characteristics.push('elevated');
         }
 
-        // Quaternary: background
-        if (!suffix && hasBackground) {
-          suffix = 'filled';
-        }
-
-        // If still no distinguishing feature, fall back to prominence-based names
-        if (!suffix) {
+        // Build suffix from characteristics
+        let suffix = '';
+        if (characteristics.length === 0) {
+          // No distinguishing features - use prominence-based naming
           if (duplicates.length === 2) {
             suffix = index === 0 ? 'emphasized' : 'subtle';
           } else if (duplicates.length === 3) {
             suffix = ['heavy', 'medium', 'light'][index];
-          } else if (index === 0) {
-            suffix = 'extra-heavy';
-          } else if (index === 1) {
-            suffix = 'heavy';
-          } else if (index === duplicates.length - 1) {
-            suffix = 'subtle';
-          } else if (index === duplicates.length - 2) {
-            suffix = 'light';
           } else {
-            // Last resort for middle variants: use ordinal names
             const ordinals = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
             suffix = ordinals[index] || `variant-${index + 1}`;
           }
+        } else if (characteristics.length === 1) {
+          suffix = characteristics[0];
+        } else {
+          // Combine characteristics intelligently
+          // Priority: border-type + border-color, or padding + radius
+          if (characteristics.includes('thin-border') || characteristics.includes('thick-border')) {
+            const borderType = characteristics.find(c => c.includes('border')) || '';
+            const color = characteristics.find(c => ['light', 'medium', 'dark'].includes(c));
+            const otherTraits = characteristics.filter(c => !c.includes('border') && !['light', 'medium', 'dark'].includes(c));
+
+            if (color && otherTraits.length > 0) {
+              suffix = `${borderType}-${color}-${otherTraits[0]}`;
+            } else if (color) {
+              suffix = `${borderType}-${color}`;
+            } else if (otherTraits.length > 0) {
+              suffix = `${borderType}-${otherTraits.join('-')}`;
+            } else {
+              suffix = borderType;
+            }
+          } else {
+            // No border - combine other characteristics
+            suffix = characteristics.slice(0, 2).join('-');
+          }
         }
 
-        // Check if suffix is already used by another card in this set
+        // Check for collision and add disambiguator if needed
         const proposedName = `${variantName}-${suffix}`;
-        const alreadyUsed = cards.some(c => c !== card && c.variant === proposedName);
+        const collision = duplicates.filter(c => c !== card && c.variant === proposedName).length > 0;
 
-        if (alreadyUsed) {
-          // Add secondary qualifier
-          if (padding > 8) {
-            suffix = `${suffix}-padded`;
-          } else if (padding > 0) {
-            suffix = `${suffix}-compact`;
+        if (collision) {
+          // Try adding unused characteristics
+          const unusedTraits = characteristics.filter(c => !suffix.includes(c));
+          if (unusedTraits.length > 0) {
+            suffix = `${suffix}-${unusedTraits[0]}`;
           } else {
-            suffix = `${suffix}-${index + 1}`;
+            // Use ordinal as last resort
+            const ordinals = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'];
+            suffix = `${suffix}-${ordinals[index] || 'variant'}`;
           }
         }
 
