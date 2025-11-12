@@ -157,40 +157,82 @@ function detectLayoutStructure(): LayoutStructureType {
 function extractLayoutRegions(): LayoutRegion[] {
   const regions: LayoutRegion[] = [];
 
-  // Detect sidebar
-  const sidebar = document.querySelector(
-    'aside, [role="complementary"], [class*="sidebar"], nav[class*="side"]'
-  );
-  if (sidebar && isVisible(sidebar)) {
+  // Detect sidebar - try multiple selectors
+  const sidebarSelectors = [
+    'aside:not([aria-hidden="true"])',
+    '[role="complementary"]:not([aria-hidden="true"])',
+    'nav[class*="sidebar"]:not([aria-hidden="true"])',
+    'nav[class*="side"]:not([aria-hidden="true"])',
+    '[class*="sidebar"]:not([aria-hidden="true"])'
+  ];
+
+  let sidebar: Element | null = null;
+  for (const selector of sidebarSelectors) {
+    const el = document.querySelector(selector);
+    if (el && isVisible(el)) {
+      const rect = el.getBoundingClientRect();
+      // Validate it's actually sidebar-like (narrow vertical section)
+      if (rect.width > 100 && rect.width < 500 && rect.height > 200) {
+        sidebar = el;
+        break;
+      }
+    }
+  }
+
+  if (sidebar) {
     const styles = getCachedComputedStyle(sidebar);
     const rect = sidebar.getBoundingClientRect();
 
-    // Determine position
+    // Determine position based on left vs right placement
     let position: 'left' | 'right' = 'left';
-    if (rect.right > window.innerWidth * 0.7) position = 'right';
+    if (rect.left > window.innerWidth * 0.5) position = 'right';
 
     // Detect what's inside
     const contains: string[] = [];
     if (sidebar.querySelector('nav, [role="navigation"]')) contains.push('navigation');
     if (sidebar.querySelector('button, a')) contains.push('links');
     if (sidebar.querySelector('form, input')) contains.push('search');
-    if (sidebar.querySelector('[class*="logo"]')) contains.push('logo');
+    if (sidebar.querySelector('[class*="logo"], img[alt*="logo" i]')) contains.push('logo');
+
+    // Use computed width if rect width seems wrong
+    const computedWidth = parseFloat(styles.width);
+    const width = computedWidth > 0 ? computedWidth : rect.width;
 
     regions.push({
       name: 'sidebar',
       role: 'navigation',
       position,
-      width: `${Math.round(rect.width)}px`,
+      width: `${Math.round(width)}px`,
       height: `${Math.round(rect.height)}px`,
       contains: contains.length > 0 ? contains : ['navigation'],
-      background: styles.backgroundColor,
-      zIndex: styles.zIndex
+      background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined,
+      zIndex: styles.zIndex !== 'auto' ? styles.zIndex : undefined
     });
   }
 
-  // Detect topbar/header
-  const topbar = document.querySelector('header, [role="banner"], [class*="topbar"], [class*="header"]');
-  if (topbar && isVisible(topbar)) {
+  // Detect topbar/header - try multiple selectors
+  const topbarSelectors = [
+    'header:not([aria-hidden="true"])',
+    '[role="banner"]:not([aria-hidden="true"])',
+    '[class*="topbar"]:not([aria-hidden="true"])',
+    '[class*="header"]:not([aria-hidden="true"])',
+    '[class*="navbar"]:not([aria-hidden="true"])'
+  ];
+
+  let topbar: Element | null = null;
+  for (const selector of topbarSelectors) {
+    const el = document.querySelector(selector);
+    if (el && isVisible(el)) {
+      const rect = el.getBoundingClientRect();
+      // Validate it's actually topbar-like (horizontal, near top)
+      if (rect.top < 100 && rect.width > window.innerWidth * 0.5 && rect.height < 200) {
+        topbar = el;
+        break;
+      }
+    }
+  }
+
+  if (topbar) {
     const styles = getCachedComputedStyle(topbar);
     const rect = topbar.getBoundingClientRect();
 
@@ -200,52 +242,80 @@ function extractLayoutRegions(): LayoutRegion[] {
     if (topbar.querySelector('[class*="logo"], img')) contains.push('branding');
     if (topbar.querySelector('input, [class*="search"]')) contains.push('search');
 
+    // Use computed dimensions if rect seems wrong
+    const computedHeight = parseFloat(styles.height);
+    const height = computedHeight > 0 ? computedHeight : rect.height;
+
     regions.push({
       name: 'topbar',
       role: 'banner',
       position: 'top',
-      height: `${Math.round(rect.height)}px`,
+      height: `${Math.round(height)}px`,
       width: `${Math.round(rect.width)}px`,
       contains: contains.length > 0 ? contains : ['branding', 'navigation'],
-      background: styles.backgroundColor,
-      zIndex: styles.zIndex
+      background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined,
+      zIndex: styles.zIndex !== 'auto' ? styles.zIndex : undefined
     });
   }
 
   // Detect main content area
-  const main = document.querySelector('main, [role="main"], #main, .main, [class*="content"]');
-  if (main && isVisible(main)) {
+  const mainSelectors = [
+    'main:not([aria-hidden="true"])',
+    '[role="main"]:not([aria-hidden="true"])',
+    '#main:not([aria-hidden="true"])',
+    '.main:not([aria-hidden="true"])',
+    '[class*="content"][class*="main"]:not([aria-hidden="true"])'
+  ];
+
+  let main: Element | null = null;
+  for (const selector of mainSelectors) {
+    const el = document.querySelector(selector);
+    if (el && isVisible(el)) {
+      main = el;
+      break;
+    }
+  }
+
+  if (main) {
     const styles = getCachedComputedStyle(main);
     const rect = main.getBoundingClientRect();
 
     const contains: string[] = [];
-    if (main.querySelector('table, [role="table"]')) contains.push('data-table');
+    if (main.querySelector('table, [role="table"], [role="grid"]')) contains.push('data-table');
     if (main.querySelector('form')) contains.push('form');
     if (main.querySelector('article, [class*="card"]')) contains.push('cards');
     if (main.querySelector('[class*="grid"]')) contains.push('grid-layout');
+
+    // Use computed width if rect width seems wrong
+    const computedWidth = parseFloat(styles.width);
+    const width = computedWidth > 0 ? computedWidth : rect.width;
 
     regions.push({
       name: 'main',
       role: 'main',
       position: 'center',
-      width: `${Math.round(rect.width)}px`,
+      width: `${Math.round(width)}px`,
       contains: contains.length > 0 ? contains : ['content'],
-      background: styles.backgroundColor
+      background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined
     });
   }
 
   // Detect footer
-  const footer = document.querySelector('footer, [role="contentinfo"]');
+  const footer = document.querySelector('footer:not([aria-hidden="true"]), [role="contentinfo"]:not([aria-hidden="true"])');
   if (footer && isVisible(footer)) {
     const styles = getCachedComputedStyle(footer);
     const rect = footer.getBoundingClientRect();
+
+    // Use computed height if rect seems wrong
+    const computedHeight = parseFloat(styles.height);
+    const height = computedHeight > 0 ? computedHeight : rect.height;
 
     regions.push({
       name: 'footer',
       role: 'contentinfo',
       position: 'bottom',
-      height: `${Math.round(rect.height)}px`,
-      background: styles.backgroundColor
+      height: `${Math.round(height)}px`,
+      background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined
     });
   }
 

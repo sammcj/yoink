@@ -266,17 +266,16 @@ export function analyzeSemanticColors(
     interactive: {}
   };
 
-  // Assign top colors to semantic categories
+  // Assign top colors to semantic categories (only to PRIMARY usage to avoid duplicates)
   for (const context of colorContexts.slice(0, 15)) {
     const name = context.semanticName || 'unknown';
+    const primaryUsage = context.usedFor[0]; // Only use primary usage
 
-    if (context.usedFor.includes('backgrounds')) {
+    if (primaryUsage === 'backgrounds') {
       semantic.backgrounds[name] = context.color;
-    }
-    if (context.usedFor.includes('text')) {
+    } else if (primaryUsage === 'text') {
       semantic.text[name] = context.color;
-    }
-    if (context.usedFor.includes('borders') || context.usedFor.includes('dividers')) {
+    } else if (primaryUsage === 'borders' || primaryUsage === 'dividers') {
       semantic.borders[name] = context.color;
     }
   }
