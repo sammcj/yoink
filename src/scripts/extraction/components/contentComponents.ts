@@ -57,7 +57,7 @@ interface ComponentVariant {
  * Card component variant structure
  */
 interface CardVariant extends ComponentVariant {
-  variant: 'elevated' | 'flat' | 'interactive' | 'media' | 'default';
+  variant: string; // elevated, flat, interactive, media, media-overlay, outlined, overlay, ghost, default
 }
 
 /**
@@ -565,13 +565,50 @@ export function extractAvatars(): AvatarVariant[] {
  *
  * @internal
  */
-function inferCardVariant(card: HTMLElement): 'elevated' | 'flat' | 'interactive' | 'media' | 'default' {
+function inferCardVariant(card: HTMLElement): string {
   const className = getClassName(card).toLowerCase();
+  const styles = getComputedStyle(card);
 
+  // Check class names first
   if (className.includes('elevated') || className.includes('raised')) return 'elevated';
   if (className.includes('flat') || className.includes('outlined')) return 'flat';
   if (className.includes('interactive') || className.includes('clickable')) return 'interactive';
-  if (card.querySelector('img, video')) return 'media';
+
+  // Analyze actual styles to create semantic variant names
+  const hasShadow = styles.boxShadow !== 'none' && !styles.boxShadow.includes('0px 0px 0px');
+  const hasBorder = styles.border !== 'none' && !styles.borderWidth.startsWith('0');
+  const hasMedia = card.querySelector('img, video') !== null;
+
+  // Check background opacity to distinguish overlay vs solid cards
+  const bgColor = styles.backgroundColor;
+  const isTransparent = bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent';
+  const isSemiTransparent = bgColor.includes('rgba') && !isTransparent;
+
+  // Helper to detect if color is a neutral gray/black/white
+  const isNeutral = (color: string) => {
+    const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!match) return true;
+    const [_, r, g, b] = match.map(Number);
+    // Check if RGB values are similar (neutral gray)
+    const maxDiff = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
+    return maxDiff < 20; // If difference between channels is small, it's a neutral
+  };
+
+  // Check if this is a colored card (not neutral)
+  const isColored = !isTransparent && !isSemiTransparent && !isNeutral(bgColor);
+
+  // Build variant name based on characteristics
+  if (hasMedia) {
+    if (isSemiTransparent) return 'media-overlay';
+    if (isColored) return 'media-accent';
+    return 'media';
+  }
+
+  if (hasShadow) return 'elevated';
+  if (hasBorder && !hasShadow) return 'outlined';
+  if (isSemiTransparent) return 'overlay';
+  if (isTransparent) return 'ghost';
+  if (isColored) return 'accent';
 
   return 'default';
 }
@@ -580,12 +617,12 @@ function inferCardVariant(card: HTMLElement): 'elevated' | 'flat' | 'interactive
  * Infers avatar variant from size and shape.
  *
  * Categorizes avatars by:
- * - Shape: circular (50% border-radius) or rounded (smaller radius)
+ * - Shape: circular (50% border-radius), square (0px border-radius), or rounded (other values)
  * - Size: xs (≤24px), sm (≤32px), md (≤48px), lg (≤64px), xl (>64px)
  *
  * @param avatar - The avatar element
  * @param styles - Computed styles of the avatar
- * @returns Variant string in format "{shape}-{size}" (e.g., "circular-md")
+ * @returns Variant string in format "{shape}-{size}" (e.g., "circular-md", "square-sm")
  *
  * @internal
  */
@@ -595,8 +632,17 @@ function inferAvatarVariant(avatar: HTMLElement, styles: CSSStyleDeclaration): s
   const size = Math.round(rect.width);
 
   // Determine shape
-  const isCircular = borderRadius === '50%' || borderRadius === '9999px';
-  const shape = isCircular ? 'circular' : 'rounded';
+  const isCircular = borderRadius === '50%' || borderRadius === '9999px' || borderRadius === '9000px';
+  const isSquare = borderRadius === '0px' || borderRadius === '0' || !borderRadius;
+
+  let shape: string;
+  if (isCircular) {
+    shape = 'circular';
+  } else if (isSquare) {
+    shape = 'square';
+  } else {
+    shape = 'rounded';
+  }
 
   // Determine size category
   if (size <= 24) return `${shape}-xs`;

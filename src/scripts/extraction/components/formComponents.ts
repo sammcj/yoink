@@ -31,12 +31,22 @@ import { extractStateStyles, createStyleSignature } from '../../utils/componentH
 export function inferInputVariant(input: HTMLElement, type: string): string {
   const className = getClassName(input).toLowerCase();
 
+  // Handle specific input types
   if (type === 'checkbox') return 'checkbox';
   if (type === 'radio') return 'radio';
   if (type === 'select' || input.tagName.toLowerCase() === 'select') return 'select';
   if (type === 'textarea' || input.tagName.toLowerCase() === 'textarea') return 'textarea';
   if (type === 'search') return 'search';
+  if (type === 'range') return 'range';
+  if (type === 'number') return 'number';
+  if (type === 'email') return 'email';
+  if (type === 'password') return 'password';
+  if (type === 'date' || type === 'datetime-local') return 'date';
+  if (type === 'tel') return 'tel';
+  if (type === 'url') return 'url';
+  if (type === 'file') return 'file';
 
+  // Check for error/success states
   if (className.includes('error') || className.includes('invalid')) return 'text-error';
   if (className.includes('success') || className.includes('valid')) return 'text-success';
 
@@ -68,13 +78,25 @@ export function extractInputs(): InputComponent[] {
   const seen = new Map<string, InputComponent>();
 
   // Expanded to catch custom input implementations (contenteditable, role="textbox", etc.)
-  const inputSelectors = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select, [role="textbox"], [role="searchbox"], [role="combobox"], [contenteditable="true"], [class*="input"]:not(input)';
+  const inputSelectors = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select, [role="textbox"], [role="searchbox"], [role="combobox"], [contenteditable="true"]';
   const elements = document.querySelectorAll(inputSelectors);
 
   elements.forEach(input => {
     const styles = getComputedStyle(input);
     const el = input as HTMLElement;
-    const inputType = (input as HTMLInputElement).type || el.tagName.toLowerCase();
+    const tagName = el.tagName.toLowerCase();
+
+    // Skip elements that are clearly not inputs (divs, labels, spans, etc.)
+    // Only include actual input elements, textareas, selects, and semantic input roles
+    const isActualInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+    const hasInputRole = el.hasAttribute('role') && ['textbox', 'searchbox', 'combobox'].includes(el.getAttribute('role') || '');
+    const isContentEditable = el.getAttribute('contenteditable') === 'true';
+
+    if (!isActualInput && !hasInputRole && !isContentEditable) {
+      return; // Skip non-input elements
+    }
+
+    const inputType = (input as HTMLInputElement).type || tagName;
 
     const signature = createStyleSignature(el);
 

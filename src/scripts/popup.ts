@@ -4,7 +4,7 @@
  * Handles the popup UI and YAML generation
  */
 
-import { safeValue, safeNumber } from './utils/yamlHelpers';
+import { safeValue, safeNumber, isMeaninglessValue } from './utils/yamlHelpers';
 
 const scanButton = document.getElementById('scanBtn') as HTMLButtonElement;
 const copyButton = document.getElementById('copyBtn') as HTMLButtonElement;
@@ -151,6 +151,102 @@ function looksLikeColor(value: string): boolean {
 }
 
 /**
+ * Formats state styles for YAML output, prioritizing transition timing information
+ */
+function formatStateStyles(stateObj: any, indent: string): string {
+  let yaml = '';
+  const entries = Object.entries(stateObj);
+
+  // Sort entries to show transition info first
+  const sorted = entries.sort(([keyA], [keyB]) => {
+    const priorityOrder = ['transitionDuration', 'transitionEasing', 'hasTransition', 'transition'];
+    const indexA = priorityOrder.indexOf(keyA);
+    const indexB = priorityOrder.indexOf(keyB);
+
+    // If both are in priority list, sort by priority
+    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+    // If only A is in priority, A comes first
+    if (indexA !== -1) return -1;
+    // If only B is in priority, B comes first
+    if (indexB !== -1) return 1;
+    // Otherwise maintain order
+    return 0;
+  });
+
+  sorted.forEach(([key, value]) => {
+    // Skip 'transition' if we have parsed duration/easing (to avoid redundancy)
+    if (key === 'transition' && stateObj.transitionDuration && stateObj.transitionEasing) {
+      return; // Skip full transition string when we have parsed values
+    }
+
+    yaml += `${indent}${key}: "${value}"\n`;
+  });
+
+  return yaml;
+}
+
+/**
+ * Generates a semantic description of a component variant based on its styles.
+ * Highlights key visual characteristics to help understand what makes variants distinct.
+ */
+function generateVariantDescription(styles: any): string {
+  const parts: string[] = [];
+
+  // Add color information
+  if (styles.background && !isMeaninglessValue('background', styles.background)) {
+    const bg = styles.background.replace(/"/g, '');
+    parts.push(`${bg} background`);
+  }
+
+  if (styles.color && !isMeaninglessValue('color', styles.color)) {
+    const textColor = styles.color.replace(/"/g, '');
+    parts.push(`${textColor} text`);
+  }
+
+  // Add border information
+  if (styles.border && !isMeaninglessValue('border', styles.border)) {
+    const border = styles.border.replace(/"/g, '');
+    if (border.includes('none')) {
+      parts.push('no border');
+    } else {
+      parts.push('bordered');
+    }
+  }
+
+  // Add shadow/elevation
+  if (styles.boxShadow && !isMeaninglessValue('boxShadow', styles.boxShadow)) {
+    parts.push('elevated');
+  }
+
+  // Add size hints from padding/fontSize
+  if (styles.padding) {
+    const paddingVal = parseFloat(styles.padding);
+    if (paddingVal > 20) {
+      parts.push('large padding');
+    } else if (paddingVal < 8) {
+      parts.push('compact');
+    }
+  }
+
+  // Add rounded corners
+  if (styles.borderRadius && !isMeaninglessValue('borderRadius', styles.borderRadius)) {
+    const radius = parseFloat(styles.borderRadius);
+    if (radius > 20) {
+      parts.push('pill-shaped');
+    } else if (radius > 8) {
+      parts.push('rounded');
+    }
+  }
+
+  // If we have parts, format them into a description
+  if (parts.length > 0) {
+    return parts.join(', ');
+  }
+
+  return '';
+}
+
+/**
  * Recursively generates YAML for DOM tree structure
  */
 function generateDOMYAML(node: any, indentLevel: number): string {
@@ -257,8 +353,22 @@ function generateYAML(styles: any): string {
     yaml += `\n`;
   }
 
-  // Colors - with usage data
+  // Colors - with usage data and CSS variable mapping
   yaml += `colors:\n`;
+
+  // Build reverse mapping: color value -> CSS variable name
+  const colorToCssVar = new Map<string, string>();
+  if (styles.cssVariables) {
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+      if (lightValue && looksLikeColor(lightValue)) {
+        // Normalize color for matching
+        const normalized = lightValue.trim().toLowerCase();
+        colorToCssVar.set(normalized, varName.replace('--', ''));
+      }
+    }
+  }
+
   yaml += `  extracted:\n`;
   if (styles.colors && styles.colorUsage) {
     const topColors = styles.colors.slice(0, 15);
@@ -266,17 +376,107 @@ function generateYAML(styles: any): string {
       const usage = styles.colorUsage[color] || 0;
       yaml += `    - value: "${color}"\n`;
       yaml += `      usage-count: ${usage}\n`;
+
+      // Add CSS variable mapping if exists
+      const normalized = color.trim().toLowerCase();
+      const cssVar = colorToCssVar.get(normalized);
+      if (cssVar) {
+        yaml += `      css-var: "--${cssVar}"\n`;
+      }
     });
   }
 
-  // CSS Variables (if any colors)
-  if (styles.cssVariables) {
+  // CSS Variables - organized by type
+  if (styles.cssVariables && Object.keys(styles.cssVariables).length > 0) {
     yaml += `\n  css-variables:\n`;
-    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
-      const lightValue = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
-      if (lightValue && looksLikeColor(lightValue)) {
-        yaml += `    ${varName.replace('--', '')}: "${lightValue}"\n`;
+
+    // Helper to filter out meaningless CSS variables
+    const isMeaninglessCssVar = (name: string, value: string): boolean => {
+      // Skip very short non-semantic names (1-3 chars) with simple numeric values
+      if (name.length <= 3 && /^[0-9.]+$/.test(value)) {
+        return true;
       }
+      // Skip variables that are just numbers without context
+      if (/^[a-z]{1,3}$/.test(name) && value === '1') {
+        return true;
+      }
+      return false;
+    };
+
+    // Group variables by semantic category
+    const colorVars: [string, string][] = [];
+    const spacingVars: [string, string][] = [];
+    const typographyVars: [string, string][] = [];
+    const otherVars: [string, string][] = [];
+
+    for (const [varName, themes] of Object.entries(styles.cssVariables || {})) {
+      const value = (themes as any).light || (themes as any)[Object.keys(themes as any)[0]];
+      if (!value) continue;
+
+      const cleanName = varName.replace('--', '');
+
+      // Skip meaningless variables
+      if (isMeaninglessCssVar(cleanName, value)) {
+        continue;
+      }
+
+      // Categorize by name
+      if (looksLikeColor(value) && (
+        cleanName.includes('color') || cleanName.includes('bg') ||
+        cleanName.includes('border') || cleanName.includes('text') ||
+        cleanName.includes('fill') || cleanName.includes('gradient')
+      )) {
+        colorVars.push([cleanName, value]);
+      } else if (cleanName.includes('spacing') || cleanName.includes('space') ||
+                 cleanName.includes('gap') || cleanName.includes('padding') ||
+                 cleanName.includes('margin')) {
+        spacingVars.push([cleanName, value]);
+      } else if (cleanName.includes('font') || cleanName.includes('text-') ||
+                 cleanName.includes('line-height') || cleanName.includes('letter')) {
+        typographyVars.push([cleanName, value]);
+      } else if (looksLikeColor(value)) {
+        colorVars.push([cleanName, value]);
+      } else {
+        otherVars.push([cleanName, value]);
+      }
+    }
+
+    // Output organized sections (limit to top 10 per category)
+    if (colorVars.length > 0) {
+      yaml += `    # Color variables\n`;
+      colorVars.slice(0, 10).forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
+      if (colorVars.length > 10) {
+        yaml += `    # ... and ${colorVars.length - 10} more color variables\n`;
+      }
+    }
+
+    if (spacingVars.length > 0) {
+      yaml += `\n    # Spacing variables\n`;
+      spacingVars.slice(0, 5).forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
+      if (spacingVars.length > 5) {
+        yaml += `    # ... and ${spacingVars.length - 5} more spacing variables\n`;
+      }
+    }
+
+    if (typographyVars.length > 0) {
+      yaml += `\n    # Typography variables\n`;
+      typographyVars.slice(0, 5).forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
+      if (typographyVars.length > 5) {
+        yaml += `    # ... and ${typographyVars.length - 5} more typography variables\n`;
+      }
+    }
+
+    if (otherVars.length > 0 && otherVars.length <= 5) {
+      yaml += `\n    # Other variables\n`;
+      otherVars.forEach(([name, value]) => {
+        yaml += `    ${name}: "${value}"\n`;
+      });
     }
   }
   yaml += `\n`;
@@ -309,6 +509,7 @@ function generateYAML(styles: any): string {
       yaml += `      size: ${heading.fontSize}\n`;
       yaml += `      weight: ${heading.fontWeight}\n`;
       yaml += `      line-height: ${heading.lineHeight}\n`;
+      if (heading.usage) yaml += `      usage: "${heading.usage}"\n`;
       if (heading.count) yaml += `      count: ${heading.count}\n`;
       if (heading.examples && heading.examples[0]) {
         yaml += `      example: "${heading.examples[0].substring(0, 50)}"\n`;
@@ -346,9 +547,32 @@ function generateYAML(styles: any): string {
     const spacing = styles.layoutPatterns.spacingScale;
     yaml += `  base-unit: ${spacing.baseUnit}\n`;
     yaml += `  pattern: "${spacing.pattern}"\n`;
-    yaml += `  scale: [${spacing.spacingScale.slice(0, 10).map((s: any) => s.value).join(', ')}]\n`;
+
+    // Sort spacing values numerically and separate outliers
+    const spacingValues = spacing.spacingScale.map((s: any) => ({
+      ...s,
+      numValue: parseInt(s.value)
+    }));
+
+    // Sort by numeric value
+    spacingValues.sort((a: any, b: any) => a.numValue - b.numValue);
+
+    // Separate outliers (values > 100px are typically outliers in spacing systems)
+    const mainScale = spacingValues.filter((s: any) => s.numValue <= 100);
+    const outliers = spacingValues.filter((s: any) => s.numValue > 100);
+
+    // Show main scale (sorted by size)
+    yaml += `  scale: [${mainScale.map((s: any) => s.value).join(', ')}]\n`;
+
+    // Show outliers if any exist
+    if (outliers.length > 0) {
+      yaml += `  outliers: [${outliers.map((s: any) => s.value).join(', ')}]  # Large spacing values (page layout)\n`;
+    }
+
     yaml += `\n  usage:\n`;
-    spacing.spacingScale.slice(0, 8).forEach((s: any) => {
+    // Show usage stats sorted by frequency (most common first)
+    const sortedByUsage = [...spacingValues].sort((a: any, b: any) => b.count - a.count);
+    sortedByUsage.slice(0, 8).forEach((s: any) => {
       yaml += `    ${s.value}: ${s.count}  # ${s.usage}\n`;
     });
   }
@@ -544,13 +768,28 @@ function generateYAML(styles: any): string {
       yaml += `  buttons:\n`;
       styles.components.buttons.slice(0, 3).forEach((btn: any) => {
         yaml += `    - variant: ${btn.variant}\n`;
+        const description = generateVariantDescription(btn.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${btn.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        background: "${btn.styles.background}"\n`;
-        yaml += `        color: "${btn.styles.color}"\n`;
-        yaml += `        padding: "${btn.styles.padding}"\n`;
-        yaml += `        border-radius: ${btn.styles.borderRadius}\n`;
-        yaml += `        font-size: ${btn.styles.fontSize}\n`;
+        // Only output meaningful style values (filter out transparent backgrounds, 0px, etc.)
+        if (!isMeaninglessValue('background', btn.styles.background)) {
+          yaml += `        background: "${btn.styles.background}"\n`;
+        }
+        if (!isMeaninglessValue('color', btn.styles.color)) {
+          yaml += `        color: "${btn.styles.color}"\n`;
+        }
+        if (!isMeaninglessValue('padding', btn.styles.padding)) {
+          yaml += `        padding: "${btn.styles.padding}"\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', btn.styles.borderRadius)) {
+          yaml += `        border-radius: ${btn.styles.borderRadius}\n`;
+        }
+        if (btn.styles.fontSize) {
+          yaml += `        font-size: ${btn.styles.fontSize}\n`;
+        }
 
         // Interactive states
         if (btn.states || btn.stateStyles) {
@@ -559,30 +798,22 @@ function generateYAML(styles: any): string {
 
           if (states.hover) {
             yaml += `        hover:\n`;
-            Object.entries(states.hover).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.hover, '          ');
           }
 
           if (states.focus) {
             yaml += `        focus:\n`;
-            Object.entries(states.focus).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.focus, '          ');
           }
 
           if (states.active) {
             yaml += `        active:\n`;
-            Object.entries(states.active).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.active, '          ');
           }
 
           if (states.disabled) {
             yaml += `        disabled:\n`;
-            Object.entries(states.disabled).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(states.disabled, '          ');
           }
         }
       });
@@ -593,20 +824,32 @@ function generateYAML(styles: any): string {
       yaml += `\n  cards:\n`;
       styles.components.cards.slice(0, 3).forEach((card: any) => {
         yaml += `    - variant: ${card.variant}\n`;
+        const description = generateVariantDescription(card.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${card.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        background: "${card.styles.background}"\n`;
-        yaml += `        border: "${card.styles.border}"\n`;
-        yaml += `        border-radius: ${card.styles.borderRadius}\n`;
-        yaml += `        padding: ${card.styles.padding}\n`;
-        yaml += `        box-shadow: "${card.styles.boxShadow}"\n`;
+        if (!isMeaninglessValue('background', card.styles.background)) {
+          yaml += `        background: "${card.styles.background}"\n`;
+        }
+        if (!isMeaninglessValue('border', card.styles.border)) {
+          yaml += `        border: "${card.styles.border}"\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', card.styles.borderRadius)) {
+          yaml += `        border-radius: ${card.styles.borderRadius}\n`;
+        }
+        if (!isMeaninglessValue('padding', card.styles.padding)) {
+          yaml += `        padding: ${card.styles.padding}\n`;
+        }
+        if (!isMeaninglessValue('boxShadow', card.styles.boxShadow)) {
+          yaml += `        box-shadow: "${card.styles.boxShadow}"\n`;
+        }
         if (card.states) {
           yaml += `      states:\n`;
           if (card.states.hover) {
             yaml += `        hover:\n`;
-            Object.entries(card.states.hover).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(card.states.hover, '          ');
           }
         }
       });
@@ -618,26 +861,36 @@ function generateYAML(styles: any): string {
       styles.components.inputs.slice(0, 5).forEach((input: any) => {
         yaml += `    - type: ${input.type}\n`;
         yaml += `      variant: ${input.variant}\n`;
+        const description = generateVariantDescription(input.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${input.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        background: "${input.styles.background}"\n`;
-        yaml += `        border: "${input.styles.border}"\n`;
-        yaml += `        border-radius: ${input.styles.borderRadius}\n`;
-        yaml += `        padding: ${input.styles.padding}\n`;
-        yaml += `        height: ${input.styles.height}\n`;
+        if (!isMeaninglessValue('background', input.styles.background)) {
+          yaml += `        background: "${input.styles.background}"\n`;
+        }
+        if (!isMeaninglessValue('border', input.styles.border)) {
+          yaml += `        border: "${input.styles.border}"\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', input.styles.borderRadius)) {
+          yaml += `        border-radius: ${input.styles.borderRadius}\n`;
+        }
+        if (!isMeaninglessValue('padding', input.styles.padding)) {
+          yaml += `        padding: ${input.styles.padding}\n`;
+        }
+        if (!isMeaninglessValue('height', input.styles.height)) {
+          yaml += `        height: ${input.styles.height}\n`;
+        }
         if (input.states) {
           yaml += `      states:\n`;
           if (input.states.focus) {
             yaml += `        focus:\n`;
-            Object.entries(input.states.focus).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(input.states.focus, '          ');
           }
           if (input.states.disabled) {
             yaml += `        disabled:\n`;
-            Object.entries(input.states.disabled).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(input.states.disabled, '          ');
           }
         }
       });
@@ -648,6 +901,10 @@ function generateYAML(styles: any): string {
       yaml += `\n  navigation:\n`;
       styles.components.navigation.slice(0, 3).forEach((nav: any) => {
         yaml += `    - variant: ${nav.variant}\n`;
+        const description = generateVariantDescription(nav.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${nav.count}\n`;
         yaml += `      styles:\n`;
         yaml += `        color: "${nav.styles.color}"\n`;
@@ -658,9 +915,7 @@ function generateYAML(styles: any): string {
           yaml += `      states:\n`;
           if (nav.states.hover) {
             yaml += `        hover:\n`;
-            Object.entries(nav.states.hover).forEach(([key, value]) => {
-              yaml += `          ${key}: "${value}"\n`;
-            });
+            yaml += formatStateStyles(nav.states.hover, '          ');
           }
         }
       });
@@ -684,20 +939,54 @@ function generateYAML(styles: any): string {
     if (styles.components.tables && styles.components.tables.length > 0) {
       yaml += `\n  tables:\n`;
       styles.components.tables.forEach((table: any) => {
-        yaml += `    - count: ${table.count}\n`;
-        yaml += `      styles:\n`;
-        yaml += `        background: "${table.styles.background}"\n`;
-        yaml += `        border: "${table.styles.border}"\n`;
-        if (table.styles.header) {
-          yaml += `        header:\n`;
-          yaml += `          background: "${table.styles.header.background}"\n`;
-          yaml += `          color: "${table.styles.header.color}"\n`;
-          yaml += `          font-weight: ${table.styles.header.fontWeight}\n`;
-        }
-        if (table.styles.cell) {
-          yaml += `        cell:\n`;
-          yaml += `          padding: ${table.styles.cell.padding}\n`;
-          yaml += `          border-bottom: "${table.styles.cell.borderBottom}"\n`;
+        // Check if table has ANY meaningful properties before outputting
+        const hasBackground = !isMeaninglessValue('background', table.styles.background);
+        const hasBorder = !isMeaninglessValue('border', table.styles.border);
+
+        // Check header properties
+        const hasHeaderBg = table.styles.header && !isMeaninglessValue('background', table.styles.header.background);
+        const hasHeaderColor = table.styles.header && table.styles.header.color;
+        const hasHeaderWeight = table.styles.header && table.styles.header.fontWeight;
+        const hasHeaderData = hasHeaderBg || hasHeaderColor || hasHeaderWeight;
+
+        // Check cell properties
+        const hasCellPadding = table.styles.cell && !isMeaninglessValue('padding', table.styles.cell.padding);
+        const hasCellBorder = table.styles.cell && !isMeaninglessValue('border', table.styles.cell.borderBottom);
+        const hasCellData = hasCellPadding || hasCellBorder;
+
+        // Only output table if it has ANY meaningful data
+        const hasMeaningfulData = hasBackground || hasBorder || hasHeaderData || hasCellData;
+
+        if (hasMeaningfulData) {
+          yaml += `    - count: ${table.count}\n`;
+          yaml += `      styles:\n`;
+          if (hasBackground) {
+            yaml += `        background: "${table.styles.background}"\n`;
+          }
+          if (hasBorder) {
+            yaml += `        border: "${table.styles.border}"\n`;
+          }
+          if (hasHeaderData) {
+            yaml += `        header:\n`;
+            if (hasHeaderBg) {
+              yaml += `          background: "${table.styles.header.background}"\n`;
+            }
+            if (hasHeaderColor) {
+              yaml += `          color: "${table.styles.header.color}"\n`;
+            }
+            if (hasHeaderWeight) {
+              yaml += `          font-weight: ${table.styles.header.fontWeight}\n`;
+            }
+          }
+          if (hasCellData) {
+            yaml += `        cell:\n`;
+            if (hasCellPadding) {
+              yaml += `          padding: ${table.styles.cell.padding}\n`;
+            }
+            if (hasCellBorder) {
+              yaml += `          border-bottom: "${table.styles.cell.borderBottom}"\n`;
+            }
+          }
         }
       });
     }
@@ -708,12 +997,24 @@ function generateYAML(styles: any): string {
       styles.components.modals.forEach((modal: any) => {
         yaml += `    - count: ${modal.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        background: "${modal.styles.background}"\n`;
-        yaml += `        border-radius: ${modal.styles.borderRadius}\n`;
-        yaml += `        padding: ${modal.styles.padding}\n`;
-        yaml += `        box-shadow: "${modal.styles.boxShadow}"\n`;
-        yaml += `        max-width: ${modal.styles.maxWidth}\n`;
-        yaml += `        z-index: ${modal.styles.zIndex}\n`;
+        if (!isMeaninglessValue('background', modal.styles.background)) {
+          yaml += `        background: "${modal.styles.background}"\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', modal.styles.borderRadius)) {
+          yaml += `        border-radius: ${modal.styles.borderRadius}\n`;
+        }
+        if (!isMeaninglessValue('padding', modal.styles.padding)) {
+          yaml += `        padding: ${modal.styles.padding}\n`;
+        }
+        if (!isMeaninglessValue('boxShadow', modal.styles.boxShadow)) {
+          yaml += `        box-shadow: "${modal.styles.boxShadow}"\n`;
+        }
+        if (modal.styles.maxWidth && modal.styles.maxWidth !== 'none') {
+          yaml += `        max-width: ${modal.styles.maxWidth}\n`;
+        }
+        if (modal.styles.zIndex && modal.styles.zIndex !== 'auto') {
+          yaml += `        z-index: ${modal.styles.zIndex}\n`;
+        }
       });
     }
 
@@ -723,11 +1024,21 @@ function generateYAML(styles: any): string {
       styles.components.tooltips.forEach((tooltip: any) => {
         yaml += `    - count: ${tooltip.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        background: "${tooltip.styles.background}"\n`;
-        yaml += `        color: "${tooltip.styles.color}"\n`;
-        yaml += `        border-radius: ${tooltip.styles.borderRadius}\n`;
-        yaml += `        padding: ${tooltip.styles.padding}\n`;
-        yaml += `        font-size: ${tooltip.styles.fontSize}\n`;
+        if (!isMeaninglessValue('background', tooltip.styles.background)) {
+          yaml += `        background: "${tooltip.styles.background}"\n`;
+        }
+        if (tooltip.styles.color) {
+          yaml += `        color: "${tooltip.styles.color}"\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', tooltip.styles.borderRadius)) {
+          yaml += `        border-radius: ${tooltip.styles.borderRadius}\n`;
+        }
+        if (!isMeaninglessValue('padding', tooltip.styles.padding)) {
+          yaml += `        padding: ${tooltip.styles.padding}\n`;
+        }
+        if (tooltip.styles.fontSize) {
+          yaml += `        font-size: ${tooltip.styles.fontSize}\n`;
+        }
       });
     }
 
@@ -736,13 +1047,27 @@ function generateYAML(styles: any): string {
       yaml += `\n  badges:\n`;
       styles.components.badges.slice(0, 5).forEach((badge: any) => {
         yaml += `    - variant: ${badge.variant}\n`;
+        const description = generateVariantDescription(badge.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${badge.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        background: "${badge.styles.background}"\n`;
-        yaml += `        color: "${badge.styles.color}"\n`;
-        yaml += `        padding: ${badge.styles.padding}\n`;
-        yaml += `        border-radius: ${badge.styles.borderRadius}\n`;
-        yaml += `        font-size: ${badge.styles.fontSize}\n`;
+        if (!isMeaninglessValue('background', badge.styles.background)) {
+          yaml += `        background: "${badge.styles.background}"\n`;
+        }
+        if (badge.styles.color) {
+          yaml += `        color: "${badge.styles.color}"\n`;
+        }
+        if (!isMeaninglessValue('padding', badge.styles.padding)) {
+          yaml += `        padding: ${badge.styles.padding}\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', badge.styles.borderRadius)) {
+          yaml += `        border-radius: ${badge.styles.borderRadius}\n`;
+        }
+        if (badge.styles.fontSize) {
+          yaml += `        font-size: ${badge.styles.fontSize}\n`;
+        }
       });
     }
 
@@ -773,9 +1098,7 @@ function generateYAML(styles: any): string {
         if (tab.states && tab.states.hover) {
           yaml += `      states:\n`;
           yaml += `        hover:\n`;
-          Object.entries(tab.states.hover).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+          yaml += formatStateStyles(tab.states.hover, '          ');
         }
       });
     }
@@ -836,6 +1159,10 @@ function generateYAML(styles: any): string {
       yaml += `\n  alerts:\n`;
       styles.components.alerts.forEach((alert: any) => {
         yaml += `    - variant: ${alert.variant}\n`;
+        const description = generateVariantDescription(alert.styles);
+        if (description) {
+          yaml += `      description: ${description}\n`;
+        }
         yaml += `      count: ${alert.count}\n`;
         yaml += `      styles:\n`;
         yaml += `        background: "${alert.styles.background}"\n`;
@@ -858,9 +1185,7 @@ function generateYAML(styles: any): string {
         if (search.states && search.states.focus) {
           yaml += `      states:\n`;
           yaml += `        focus:\n`;
-          Object.entries(search.states.focus).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+          yaml += formatStateStyles(search.states.focus, '          ');
         }
       });
     }
@@ -871,10 +1196,18 @@ function generateYAML(styles: any): string {
       styles.components.toggles.forEach((toggle: any) => {
         yaml += `    - count: ${toggle.count}\n`;
         yaml += `      styles:\n`;
-        yaml += `        width: ${toggle.styles.width}\n`;
-        yaml += `        height: ${toggle.styles.height}\n`;
-        yaml += `        border-radius: ${toggle.styles.borderRadius}\n`;
-        yaml += `        background: "${toggle.styles.background}"\n`;
+        if (!isMeaninglessValue('width', toggle.styles.width)) {
+          yaml += `        width: ${toggle.styles.width}\n`;
+        }
+        if (!isMeaninglessValue('height', toggle.styles.height)) {
+          yaml += `        height: ${toggle.styles.height}\n`;
+        }
+        if (!isMeaninglessValue('borderRadius', toggle.styles.borderRadius)) {
+          yaml += `        border-radius: ${toggle.styles.borderRadius}\n`;
+        }
+        if (!isMeaninglessValue('background', toggle.styles.background)) {
+          yaml += `        background: "${toggle.styles.background}"\n`;
+        }
       });
     }
 
@@ -897,7 +1230,8 @@ function generateYAML(styles: any): string {
     styles.gradients.slice(0, 5).forEach((gradient: any) => {
       yaml += `  - type: ${gradient.type}\n`;
       yaml += `    count: ${gradient.count}\n`;
-      yaml += `    value: "${gradient.value.substring(0, 100)}${gradient.value.length > 100 ? '...' : ''}"\n`;
+      // Don't truncate gradient values - they need to be complete for AI agents to recreate
+      yaml += `    value: "${gradient.value}"\n`;
     });
     yaml += `\n`;
   }
@@ -1046,9 +1380,7 @@ function generateYAML(styles: any): string {
         if (combo.states && combo.states.focus) {
           yaml += `      states:\n`;
           yaml += `        focus:\n`;
-          Object.entries(combo.states.focus).forEach(([key, value]) => {
-            yaml += `          ${key}: "${value}"\n`;
-          });
+          yaml += formatStateStyles(combo.states.focus, '          ');
         }
       });
     }

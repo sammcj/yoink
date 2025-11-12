@@ -228,6 +228,8 @@ export interface StateStyles {
     utilityClasses?: string[];
     hasTransition?: boolean;
     transition?: string;
+    transitionDuration?: string;
+    transitionEasing?: string;
     inferredInteractive?: boolean;
     dataAttribute?: string;
   };

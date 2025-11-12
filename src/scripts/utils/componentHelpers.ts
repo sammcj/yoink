@@ -264,7 +264,36 @@ export function extractStateStyles(element: HTMLElement): StateStyles | undefine
   if (computedStyle.transition && computedStyle.transition !== 'all 0s ease 0s' && computedStyle.transition !== 'none') {
     if (!states.hover) states.hover = {};
     states.hover.hasTransition = true;
-    states.hover.transition = computedStyle.transition;
+
+    // Parse transition shorthand to extract duration and easing
+    const transitionStr = computedStyle.transition;
+
+    // Try to extract duration (e.g., "0.2s", "200ms")
+    const durationMatch = transitionStr.match(/(\d+\.?\d*)(s|ms)(?!\w)/);
+    // Try to extract easing (e.g., "ease-in-out", "cubic-bezier(...)")
+    const easingMatch = transitionStr.match(/(ease-in-out|ease-in|ease-out|ease|linear|cubic-bezier\([^)]+\))/);
+
+    if (durationMatch && easingMatch) {
+      // Parse duration and easing separately for clarity
+      states.hover.transitionDuration = durationMatch[0];
+      states.hover.transitionEasing = easingMatch[0];
+      // Also keep full transition for reference
+      states.hover.transition = transitionStr;
+    } else if (durationMatch) {
+      // Has duration but no explicit easing - default to 'ease'
+      states.hover.transitionDuration = durationMatch[0];
+      states.hover.transitionEasing = 'ease';
+      states.hover.transition = transitionStr;
+    } else if (easingMatch) {
+      // Has easing but no duration - use browser default 0s (probably a mistake in CSS)
+      states.hover.transitionDuration = '0s';
+      states.hover.transitionEasing = easingMatch[0];
+      states.hover.transition = transitionStr;
+    } else {
+      // Can't parse - transition might just be "all" without timing
+      // This happens when getComputedStyle doesn't return the full shorthand
+      states.hover.transition = transitionStr;
+    }
   }
 
   // If element is interactive (cursor: pointer) and NOT disabled, it likely has hover state
