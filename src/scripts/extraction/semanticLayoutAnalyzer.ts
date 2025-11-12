@@ -77,10 +77,12 @@ function detectLayoutStructure(): LayoutStructureType {
       height > window.innerHeight * 0.5
     );
 
-    const hasSidebarClass = el.className && (
-      el.className.includes('sidebar') ||
-      el.className.includes('nav') ||
-      el.className.includes('menu')
+    // Convert className to string for safe comparison (handles SVG elements)
+    const classNameStr = String(el.className || '');
+    const hasSidebarClass = classNameStr && (
+      classNameStr.includes('sidebar') ||
+      classNameStr.includes('nav') ||
+      classNameStr.includes('menu')
     );
 
     return isSidebarLike || hasSidebarClass;
