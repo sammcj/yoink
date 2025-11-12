@@ -57,12 +57,24 @@ function areButtonsSimilar(btn1: ButtonComponent, btn2: ButtonComponent): boolea
   const styles1 = btn1.styles;
   const styles2 = btn2.styles;
 
-  // 1. Compare variant type first (must match)
-  if (btn1.variant !== btn2.variant) {
+  // 1. Compare variant type with normalization to group similar variants
+  // Normalize variants by removing size suffixes and standardizing variant names
+  const normalizeVariant = (v: string) => {
+    const normalized = v.toLowerCase()
+      .replace(/outlined?/g, 'outline')  // "outlined" or "outline" → "outline"
+      .replace(/-(small|medium|large|xs|sm|md|lg|xl)$/g, '')  // Remove size suffixes
+      .trim();
+    return normalized;
+  };
+
+  const variant1 = normalizeVariant(btn1.variant);
+  const variant2 = normalizeVariant(btn2.variant);
+
+  if (variant1 !== variant2) {
     return false;
   }
 
-  const variantType = btn1.variant.toLowerCase();
+  const variantType = variant1;
   const isGhostOrOutline = variantType.includes('ghost') || variantType.includes('outline') || variantType.includes('link');
   const isSecondarySized = variantType.includes('secondary');
 

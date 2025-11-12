@@ -569,9 +569,9 @@ function inferCardVariant(card: HTMLElement): string {
   const className = getClassName(card).toLowerCase();
   const styles = getComputedStyle(card);
 
-  // Check class names first
+  // Check class names first (normalize flat/outlined to "outlined")
   if (className.includes('elevated') || className.includes('raised')) return 'elevated';
-  if (className.includes('flat') || className.includes('outlined')) return 'flat';
+  if (className.includes('flat') || className.includes('outlined')) return 'outlined';
   if (className.includes('interactive') || className.includes('clickable')) return 'interactive';
 
   // Analyze actual styles to create semantic variant names
