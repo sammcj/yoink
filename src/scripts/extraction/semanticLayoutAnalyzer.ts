@@ -163,7 +163,12 @@ function extractLayoutRegions(): LayoutRegion[] {
     '[role="complementary"]:not([aria-hidden="true"])',
     'nav[class*="sidebar"]:not([aria-hidden="true"])',
     'nav[class*="side"]:not([aria-hidden="true"])',
-    '[class*="sidebar"]:not([aria-hidden="true"])'
+    '[class*="sidebar"]:not([aria-hidden="true"])',
+    '[class*="Sidebar"]:not([aria-hidden="true"])',
+    '[class*="side-bar"]:not([aria-hidden="true"])',
+    '[class*="sidenav"]:not([aria-hidden="true"])',
+    '[id*="sidebar"]:not([aria-hidden="true"])',
+    '[id*="sidenav"]:not([aria-hidden="true"])'
   ];
 
   let sidebar: Element | null = null;
@@ -182,6 +187,43 @@ function extractLayoutRegions(): LayoutRegion[] {
       // Validate it's actually sidebar-like (narrow vertical section)
       // More lenient: 50px-600px width, 100px+ height
       if (actualWidth > 50 && actualWidth < 600 && actualHeight > 100) {
+        sidebar = el;
+        break;
+      }
+    }
+  }
+
+  // Fallback: Look for positioned elements that are sidebar-shaped
+  // Check body children and grandchildren (layout-level elements)
+  if (!sidebar) {
+    const candidates = [
+      ...Array.from(document.body.children),
+      ...Array.from(document.body.children).flatMap(c => Array.from(c.children))
+    ];
+
+    for (const el of candidates) {
+      if (!isVisible(el)) continue;
+
+      const styles = getCachedComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+
+      // Check if positioned (fixed, absolute, sticky, or even static if at left edge)
+      const isPositioned = styles.position === 'fixed' || styles.position === 'absolute' ||
+                          styles.position === 'sticky' || rect.left < 20;
+
+      if (!isPositioned) continue;
+
+      // Must be on the left side
+      if (rect.left > 100) continue;
+
+      // Get actual dimensions
+      const computedWidth = parseFloat(styles.width);
+      const computedHeight = parseFloat(styles.height);
+      const actualWidth = computedWidth > 0 ? computedWidth : rect.width;
+      const actualHeight = computedHeight > 0 ? computedHeight : rect.height;
+
+      // Must be sidebar-shaped: narrow and tall
+      if (actualWidth > 100 && actualWidth < 400 && actualHeight > 400) {
         sidebar = el;
         break;
       }
@@ -227,7 +269,11 @@ function extractLayoutRegions(): LayoutRegion[] {
     '[role="banner"]:not([aria-hidden="true"])',
     '[class*="topbar"]:not([aria-hidden="true"])',
     '[class*="header"]:not([aria-hidden="true"])',
-    '[class*="navbar"]:not([aria-hidden="true"])'
+    '[class*="navbar"]:not([aria-hidden="true"])',
+    '[class*="Header"]:not([aria-hidden="true"])',
+    '[class*="nav-bar"]:not([aria-hidden="true"])',
+    '[id*="header"]:not([aria-hidden="true"])',
+    '[id*="topbar"]:not([aria-hidden="true"])'
   ];
 
   let topbar: Element | null = null;
@@ -244,6 +290,37 @@ function extractLayoutRegions(): LayoutRegion[] {
       // Validate it's actually topbar-like (horizontal, near top)
       // More lenient: top < 150px, width > 40% viewport, height 20-300px
       if (rect.top < 150 && rect.width > window.innerWidth * 0.4 && actualHeight > 20 && actualHeight < 300) {
+        topbar = el;
+        break;
+      }
+    }
+  }
+
+  // Fallback: Look for wide, short elements near the top
+  if (!topbar) {
+    const candidates = [
+      ...Array.from(document.body.children),
+      ...Array.from(document.body.children).flatMap(c => Array.from(c.children))
+    ];
+
+    for (const el of candidates) {
+      if (!isVisible(el)) continue;
+
+      const styles = getCachedComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+
+      // Must be near the top
+      if (rect.top > 150) continue;
+
+      // Must be wide
+      if (rect.width < window.innerWidth * 0.5) continue;
+
+      // Get actual dimensions
+      const computedHeight = parseFloat(styles.height);
+      const actualHeight = computedHeight > 0 ? computedHeight : rect.height;
+
+      // Must be topbar-shaped: wide and short
+      if (actualHeight > 30 && actualHeight < 150) {
         topbar = el;
         break;
       }
