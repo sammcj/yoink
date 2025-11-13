@@ -187,8 +187,9 @@ function extractLayoutRegions(): LayoutRegion[] {
       const actualHeight = computedHeight > 0 ? computedHeight : rect.height;
 
       // Validate it's actually sidebar-like (narrow vertical section)
-      // More lenient: 50px-600px width, 100px+ height
-      if (actualWidth > 50 && actualWidth < 600 && actualHeight > 100) {
+      // Stricter height requirement to avoid nested sections: 50px-600px width, 400px+ height
+      // This ensures we get the main sidebar container, not nested navigation sections
+      if (actualWidth > 50 && actualWidth < 600 && actualHeight > 400) {
         sidebarCandidates.push({ element: el, height: actualHeight, width: actualWidth });
       }
     }
@@ -503,8 +504,8 @@ function extractLayoutMeasurements(): LayoutMeasurements {
       const computedHeight = parseFloat(styles.height);
       const actualWidth = computedWidth > 0 ? computedWidth : rect.width;
       const actualHeight = computedHeight > 0 ? computedHeight : rect.height;
-      // Same validation as extractLayoutRegions(): 50-600px width, 100px+ height
-      if (actualWidth > 50 && actualWidth < 600 && actualHeight > 100) {
+      // Same validation as extractLayoutRegions(): 50-600px width, 400px+ height
+      if (actualWidth > 50 && actualWidth < 600 && actualHeight > 400) {
         sidebarCandidates.push({ element: el, height: actualHeight });
       }
     }
