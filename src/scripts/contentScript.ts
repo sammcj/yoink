@@ -66,6 +66,11 @@ import {
   extractScrollbarStyles
 } from './extraction/miscExtractors';
 
+// NEW: Semantic extraction imports
+import { analyzeSemanticLayout } from './extraction/semanticLayoutAnalyzer';
+import { analyzeSemanticColors } from './extraction/semanticColorAnalyzer';
+import { extractInteractionPatterns } from './extraction/interactionStateExtractor';
+
 /**
  * Waits for web fonts to finish loading before extracting styles.
  * This ensures font-family values reflect the actual loaded fonts, not fallbacks.
@@ -175,7 +180,16 @@ function extractStyles(includeComponents: boolean = true): StyleExtraction {
     styleData.componentComposition = extractComponentComposition();
     styleData.zIndex = extractZIndexHierarchy();
     styleData.animations = extractAnimations();
+    // Note: Keep domStructure but it will be replaced by semanticLayout in YAML output
     styleData.domStructure = extractDOMTree();
+
+    // NEW: Semantic extractors
+    styleData.semanticLayout = analyzeSemanticLayout();
+    styleData.semanticColors = analyzeSemanticColors(
+      new Map(Object.entries(styleData.colorUsage)),
+      cssVariables
+    );
+    styleData.interactionPatterns = extractInteractionPatterns();
   }
 
   return styleData;

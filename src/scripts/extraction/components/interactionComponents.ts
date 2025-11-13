@@ -57,12 +57,24 @@ function areButtonsSimilar(btn1: ButtonComponent, btn2: ButtonComponent): boolea
   const styles1 = btn1.styles;
   const styles2 = btn2.styles;
 
-  // 1. Compare variant type first (must match)
-  if (btn1.variant !== btn2.variant) {
+  // 1. Compare variant type with normalization to group similar variants
+  // Normalize variants by removing size suffixes and standardizing variant names
+  const normalizeVariant = (v: string) => {
+    const normalized = v.toLowerCase()
+      .replace(/outlined?/g, 'outline')  // "outlined" or "outline" → "outline"
+      .replace(/-(small|medium|large|xs|sm|md|lg|xl)$/g, '')  // Remove size suffixes
+      .trim();
+    return normalized;
+  };
+
+  const variant1 = normalizeVariant(btn1.variant);
+  const variant2 = normalizeVariant(btn2.variant);
+
+  if (variant1 !== variant2) {
     return false;
   }
 
-  const variantType = btn1.variant.toLowerCase();
+  const variantType = variant1;
   const isGhostOrOutline = variantType.includes('ghost') || variantType.includes('outline') || variantType.includes('link');
   const isSecondarySized = variantType.includes('secondary');
 
@@ -371,6 +383,39 @@ export function extractButtons(): ButtonComponent[] {
     // If no similar button found, add this as a new variant
     if (!foundSimilar) {
       buttons.push(newButton);
+    }
+  });
+
+  // Post-process: Rename duplicate variant names by adding distinguishing suffixes
+  const variantCounts = new Map<string, number>();
+  buttons.forEach(btn => {
+    const count = variantCounts.get(btn.variant) || 0;
+    variantCounts.set(btn.variant, count + 1);
+  });
+
+  // If a variant name appears multiple times, add size/style suffixes
+  variantCounts.forEach((count, variantName) => {
+    if (count > 1) {
+      // Find all buttons with this variant name and add distinguishing suffixes
+      const duplicates = buttons.filter(b => b.variant === variantName);
+
+      // Sort by font size (larger first)
+      duplicates.sort((a, b) => {
+        const sizeA = parseFloat(a.styles.fontSize || '14px');
+        const sizeB = parseFloat(b.styles.fontSize || '14px');
+        return sizeB - sizeA;
+      });
+
+      // Rename them with size suffixes
+      duplicates.forEach((btn, index) => {
+        if (index === 0 && duplicates.length === 2) {
+          btn.variant = `${variantName}-large`;
+        } else if (index === 1 && duplicates.length === 2) {
+          btn.variant = `${variantName}-small`;
+        } else {
+          btn.variant = `${variantName}-${index + 1}`;
+        }
+      });
     }
   });
 
