@@ -209,7 +209,12 @@ export function extractCards(): CardVariant[] {
         const styles = card.styles;
         const border = parseFloat((styles.border || '0px').toString());
         const borderRadius = parseFloat((styles.borderRadius || '0px').toString());
-        const padding = parseFloat((styles.padding || '0px').toString());
+
+        // Parse padding - handle multi-value strings like "0px 0px 0px 12px"
+        const paddingStr = (styles.padding || '0px').toString();
+        const paddingValues = paddingStr.split(/\s+/).map(v => parseFloat(v) || 0);
+        const padding = Math.max(...paddingValues); // Use maximum padding value
+
         const hasShadow = styles.boxShadow && styles.boxShadow !== 'none';
 
         // Extract border color from border string (e.g., "1px solid rgb(182, 183, 184)")
@@ -242,7 +247,9 @@ export function extractCards(): CardVariant[] {
         // Tertiary: border radius
         if (borderRadius > 8) {
           characteristics.push('rounded');
-        } else if (borderRadius > 0 && borderRadius <= 3) {
+        } else if (borderRadius >= 3 && borderRadius <= 8) {
+          characteristics.push('smooth');
+        } else if (borderRadius > 0) {
           characteristics.push('sharp');
         }
 
