@@ -48,7 +48,7 @@ function mapWeightToSemanticName(weight: number): string {
  */
 function detectComponentType(element: Element): string {
   const tagName = element.tagName.toLowerCase();
-  const className = (element as HTMLElement).className?.toLowerCase() || '';
+  const className = String(element.className || '').toLowerCase();
   const role = element.getAttribute('role');
 
   // Heading
