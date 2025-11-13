@@ -267,11 +267,26 @@ function extractLayoutRegions(): LayoutRegion[] {
     // Check if height is >= 90% of viewport height OR if element explicitly uses 100vh
     let heightStr: string;
     const isFullViewportHeight = height >= window.innerHeight * 0.9;
-    const hasExplicitVh = (sidebar as HTMLElement).style?.height?.includes('vh') ||
-                         (sidebar as HTMLElement).style?.minHeight?.includes('vh') ||
-                         (sidebar as HTMLElement).style?.maxHeight?.includes('vh');
 
-    if (isFullViewportHeight || hasExplicitVh) {
+    // Check inline styles for vh units
+    const inlineStyle = (sidebar as HTMLElement).style;
+    const hasExplicitVh = inlineStyle?.height?.includes('vh') ||
+                         inlineStyle?.minHeight?.includes('vh') ||
+                         inlineStyle?.maxHeight?.includes('vh');
+
+    // Check if positioned/flexed to fill viewport (common patterns)
+    const isPositionedFullHeight = (
+      (styles.position === 'fixed' || styles.position === 'absolute' || styles.position === 'sticky') &&
+      (styles.top === '0px' || parseFloat(styles.top) < 50) &&
+      (styles.bottom === '0px' || parseFloat(styles.bottom) < 50)
+    );
+
+    const isFlexFillHeight = (
+      styles.flexGrow === '1' ||
+      (sidebar.parentElement && getCachedComputedStyle(sidebar.parentElement).display === 'flex')
+    );
+
+    if (isFullViewportHeight || hasExplicitVh || isPositionedFullHeight || isFlexFillHeight) {
       heightStr = '100vh';
     } else {
       heightStr = `${Math.round(height)}px`;
