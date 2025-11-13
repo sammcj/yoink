@@ -135,42 +135,105 @@ function createColorSignature(colors: ComponentColorUsage['colors']): string {
 }
 
 /**
+ * Checks if a color is transparent
+ */
+function isColorTransparent(colorStr: string): boolean {
+  if (!colorStr) return true;
+  if (colorStr === 'transparent') return true;
+  if (colorStr === 'rgba(0, 0, 0, 0)') return true;
+
+  // Check rgba with 0 alpha
+  const rgbaMatch = colorStr.match(/rgba?\([^)]+,\s*(\d*\.?\d+)\)/);
+  if (rgbaMatch && parseFloat(rgbaMatch[1]) === 0) return true;
+
+  return false;
+}
+
+/**
  * Infers button variant from visual characteristics
  */
 function inferButtonVariant(element: Element): string {
   const styles = getCachedComputedStyle(element);
   const bg = styles.backgroundColor;
-  const border = styles.borderWidth;
+  const borderColor = styles.borderColor;
+  const borderWidth = styles.borderWidth;
 
-  // Parse colors to detect characteristics
-  const bgMatch = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  // Check data attributes for variant hints
+  const dataVariant = element.getAttribute('data-variant') ||
+                     element.getAttribute('data-type') ||
+                     element.getAttribute('data-kind');
+  if (dataVariant) {
+    const variant = dataVariant.toLowerCase();
+    if (['primary', 'secondary', 'default', 'outline', 'ghost', 'danger', 'success'].includes(variant)) {
+      return variant;
+    }
+  }
 
-  const isTransparent = bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent';
-  const hasBorder = parseFloat(border) > 0;
+  // Check class names for variant hints
+  const className = element.className.toLowerCase();
+  if (className.includes('primary')) return 'primary';
+  if (className.includes('secondary')) return 'secondary';
+  if (className.includes('danger') || className.includes('destructive')) return 'danger';
+  if (className.includes('success')) return 'success';
+  if (className.includes('outline')) return 'outline';
+  if (className.includes('ghost') || className.includes('link')) return 'ghost';
+
+  const bgIsTransparent = isColorTransparent(bg);
+  const borderIsVisible = parseFloat(borderWidth) > 0 && !isColorTransparent(borderColor);
 
   // Ghost/outline buttons
-  if (isTransparent) {
-    if (hasBorder) {
+  if (bgIsTransparent) {
+    if (borderIsVisible) {
       return 'outline';
     }
     return 'ghost';
   }
 
-  // Analyze background color for variant
-  if (bgMatch) {
-    const r = parseInt(bgMatch[1]);
-    const g = parseInt(bgMatch[2]);
-    const b = parseInt(bgMatch[3]);
+  // Analyze background color for variant - support RGB, RGBA, and LCH
+  let r = 0, g = 0, b = 0;
 
+  // Try RGB/RGBA
+  const rgbMatch = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbMatch) {
+    r = parseInt(rgbMatch[1]);
+    g = parseInt(rgbMatch[2]);
+    b = parseInt(rgbMatch[3]);
+  } else {
+    // Try LCH format: lch(L C H)
+    const lchMatch = bg.match(/lch\([\d.]+\s+[\d.]+\s+([\d.]+)\)/);
+    if (lchMatch) {
+      const hue = parseFloat(lchMatch[1]);
+      // Hue-based variant detection for LCH colors
+      // Red: 0-60, Orange: 60-90, Yellow: 90-120, Green: 120-180
+      // Cyan: 180-240, Blue: 240-270, Purple/Magenta: 270-330, Red: 330-360
+      if (hue >= 0 && hue < 60) return 'danger';
+      if (hue >= 120 && hue < 180) return 'success';
+      if (hue >= 240 && hue < 330) return 'primary'; // Blue to purple range
+
+      // Check lightness for grayscale detection
+      const lightnessMatch = bg.match(/lch\(([\d.]+)/);
+      if (lightnessMatch) {
+        const lightness = parseFloat(lightnessMatch[1]);
+        if (lightness > 80) return 'secondary';
+        if (lightness < 30) return 'dark';
+      }
+      return 'default';
+    }
+  }
+
+  // RGB-based variant detection
+  if (rgbMatch) {
     const brightness = (r + g + b) / 3;
     const isReddish = r > g + 30 && r > b + 30;
     const isGreenish = g > r + 30 && g > b + 30;
     const isBlueish = b > r + 20 && b > g + 20;
-    const isPurplish = r > 100 && b > 100 && g < r - 30;
+    const isPurplish = (r > 80 && b > 80 && Math.abs(r - b) < 50 && g < r - 20) ||
+                       (r > 100 && b > 100 && g < r - 30);
 
     if (isReddish && r > 150) return 'danger';
     if (isGreenish && g > 150) return 'success';
-    if (isBlueish || isPurplish) return 'primary';
+    if (isPurplish) return 'primary'; // Improved purple detection
+    if (isBlueish) return 'primary';
 
     // Grayscale buttons
     const saturation = Math.max(r, g, b) - Math.min(r, g, b);
@@ -185,10 +248,93 @@ function inferButtonVariant(element: Element): string {
 }
 
 /**
+ * Calculates color similarity (0 = identical, higher = more different)
+ */
+function colorDistance(color1: string | undefined, color2: string | undefined): number {
+  if (!color1 || !color2) return color1 === color2 ? 0 : 100;
+  if (color1 === color2) return 0;
+
+  // Extract numeric components from any color format
+  const extractComponents = (color: string): number[] => {
+    // Try RGB/RGBA
+    const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbMatch) {
+      return [parseInt(rgbMatch[1]), parseInt(rgbMatch[2]), parseInt(rgbMatch[3])];
+    }
+
+    // Try LCH
+    const lchMatch = color.match(/lch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)/);
+    if (lchMatch) {
+      return [parseFloat(lchMatch[1]), parseFloat(lchMatch[2]), parseFloat(lchMatch[3])];
+    }
+
+    return [0, 0, 0];
+  };
+
+  const c1 = extractComponents(color1);
+  const c2 = extractComponents(color2);
+
+  // Simple Euclidean distance
+  return Math.sqrt(
+    Math.pow(c1[0] - c2[0], 2) +
+    Math.pow(c1[1] - c2[1], 2) +
+    Math.pow(c1[2] - c2[2], 2)
+  );
+}
+
+/**
+ * Checks if two button variants are similar enough to merge
+ */
+function areVariantsSimilar(v1: ComponentColorUsage, v2: ComponentColorUsage): boolean {
+  // Must have same semantic variant
+  if (v1.variant !== v2.variant) return false;
+
+  // Calculate color distances
+  const bgDist = colorDistance(v1.colors.background, v2.colors.background);
+  const textDist = colorDistance(v1.colors.text, v2.colors.text);
+  const borderDist = colorDistance(v1.colors.border, v2.colors.border);
+
+  // Thresholds for similarity (tuned for LCH which has different scales)
+  const bgThreshold = 15;  // Allow small variations in background
+  const textThreshold = 15;
+  const borderThreshold = 15;
+
+  return bgDist < bgThreshold && textDist < textThreshold && borderDist < borderThreshold;
+}
+
+/**
+ * Merges two similar button variants
+ */
+function mergeVariants(v1: ComponentColorUsage, v2: ComponentColorUsage): ComponentColorUsage {
+  // Use the variant with higher count as base
+  const base = v1.count >= v2.count ? v1 : v2;
+  const other = v1.count >= v2.count ? v2 : v1;
+
+  return {
+    ...base,
+    count: v1.count + v2.count,
+    // Merge hover states if either has them
+    colors: {
+      ...base.colors,
+      hoverBackground: base.colors.hoverBackground || other.colors.hoverBackground,
+      hoverText: base.colors.hoverText || other.colors.hoverText,
+      hoverBorder: base.colors.hoverBorder || other.colors.hoverBorder,
+      focusBorder: base.colors.focusBorder || other.colors.focusBorder,
+      focusOutline: base.colors.focusOutline || other.colors.focusOutline,
+    },
+  };
+}
+
+/**
  * Extracts colors from button elements
  */
 function extractButtonColors(buttons: Element[]): ComponentColorUsage[] {
-  const buttonVariants = new Map<string, ComponentColorUsage>();
+  // First pass: Group buttons by exact signature and track all measurements
+  const variantData = new Map<string, {
+    usage: ComponentColorUsage;
+    heights: number[];
+    widths: number[];
+  }>();
 
   for (const button of buttons) {
     const styles = getCachedComputedStyle(button);
@@ -198,7 +344,9 @@ function extractButtonColors(buttons: Element[]): ComponentColorUsage[] {
     const colors: ComponentColorUsage['colors'] = {
       background: normalizeColor(styles.backgroundColor),
       text: normalizeColor(styles.color),
-      border: styles.borderWidth !== '0px' ? normalizeColor(styles.borderColor) : undefined,
+      border: styles.borderWidth !== '0px' && !isColorTransparent(styles.borderColor)
+        ? normalizeColor(styles.borderColor)
+        : undefined,
     };
 
     // Extract icon colors if button contains SVG
@@ -232,7 +380,6 @@ function extractButtonColors(buttons: Element[]): ComponentColorUsage[] {
           const rules = Array.from(sheet.cssRules || []);
           for (const rule of rules) {
             if (rule instanceof CSSStyleRule && rule.selectorText) {
-              // Check if this rule matches our button
               try {
                 if (button.matches(rule.selectorText.replace(/:hover.*/, ''))) {
                   if (rule.selectorText.includes(':hover')) {
@@ -274,24 +421,84 @@ function extractButtonColors(buttons: Element[]): ComponentColorUsage[] {
     // Create signature for grouping
     const signature = `${variant}|${createColorSignature(colors)}`;
 
-    if (buttonVariants.has(signature)) {
-      const existing = buttonVariants.get(signature)!;
-      existing.count++;
+    if (variantData.has(signature)) {
+      const existing = variantData.get(signature)!;
+      existing.usage.count++;
+      if (measurements.height) existing.heights.push(measurements.height);
+      if (measurements.minWidth) existing.widths.push(measurements.minWidth);
     } else {
-      buttonVariants.set(signature, {
-        component: 'button',
-        variant,
-        count: 1,
-        colors,
-        measurements,
+      variantData.set(signature, {
+        usage: {
+          component: 'button',
+          variant,
+          count: 1,
+          colors,
+          measurements,
+        },
+        heights: measurements.height ? [measurements.height] : [],
+        widths: measurements.minWidth ? [measurements.minWidth] : [],
       });
     }
   }
 
-  // Return sorted by frequency
-  return Array.from(buttonVariants.values())
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10); // Top 10 button variants
+  // Calculate most common height/width for each variant
+  for (const data of variantData.values()) {
+    if (data.heights.length > 0) {
+      // Find most common height
+      const heightCounts = new Map<number, number>();
+      data.heights.forEach(h => heightCounts.set(h, (heightCounts.get(h) || 0) + 1));
+      const mostCommonHeight = Array.from(heightCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0][0];
+      data.usage.measurements!.height = mostCommonHeight;
+    }
+  }
+
+  // Extract just the usages
+  let variants = Array.from(variantData.values()).map(d => d.usage);
+
+  // Apply fuzzy matching to merge similar variants
+  const merged: ComponentColorUsage[] = [];
+  const used = new Set<number>();
+
+  for (let i = 0; i < variants.length; i++) {
+    if (used.has(i)) continue;
+
+    let current = variants[i];
+
+    // Try to merge with other unused variants
+    for (let j = i + 1; j < variants.length; j++) {
+      if (used.has(j)) continue;
+
+      if (areVariantsSimilar(current, variants[j])) {
+        current = mergeVariants(current, variants[j]);
+        used.add(j);
+      }
+    }
+
+    merged.push(current);
+    used.add(i);
+  }
+
+  // Return sorted by frequency, limited to top variants
+  return merged
+    .sort((a, b) => {
+      // Sort by variant importance first (primary > default > outline > ghost > others)
+      const variantOrder: Record<string, number> = {
+        primary: 0,
+        default: 1,
+        outline: 2,
+        ghost: 3,
+        secondary: 4,
+        danger: 5,
+        success: 6,
+      };
+      const orderDiff = (variantOrder[a.variant] ?? 10) - (variantOrder[b.variant] ?? 10);
+      if (orderDiff !== 0) return orderDiff;
+
+      // Then by count
+      return b.count - a.count;
+    })
+    .slice(0, 6); // Top 6 button variants
 }
 
 /**
@@ -330,7 +537,13 @@ function identifyNavigation(): Element[] {
  * Extracts colors from navigation elements
  */
 function extractNavigationColors(navItems: Element[]): ComponentColorUsage[] {
-  const navVariants = new Map<string, ComponentColorUsage>();
+  const variantData = new Map<string, {
+    usage: ComponentColorUsage;
+    heights: number[];
+    paddings: string[];
+    fontSizes: string[];
+    fontWeights: string[];
+  }>();
 
   for (const item of navItems) {
     const styles = getCachedComputedStyle(item);
@@ -339,7 +552,9 @@ function extractNavigationColors(navItems: Element[]): ComponentColorUsage[] {
     const colors: ComponentColorUsage['colors'] = {
       background: normalizeColor(styles.backgroundColor),
       text: normalizeColor(styles.color),
-      border: styles.borderWidth !== '0px' ? normalizeColor(styles.borderColor) : undefined,
+      border: styles.borderWidth !== '0px' && !isColorTransparent(styles.borderColor)
+        ? normalizeColor(styles.borderColor)
+        : undefined,
     };
 
     // Check for icon
@@ -361,21 +576,71 @@ function extractNavigationColors(navItems: Element[]): ComponentColorUsage[] {
 
     const signature = createColorSignature(colors);
 
-    if (navVariants.has(signature)) {
-      const existing = navVariants.get(signature)!;
-      existing.count++;
+    if (variantData.has(signature)) {
+      const existing = variantData.get(signature)!;
+      existing.usage.count++;
+      if (measurements.height) existing.heights.push(measurements.height);
+      if (measurements.padding) existing.paddings.push(measurements.padding);
+      if (measurements.fontSize) existing.fontSizes.push(measurements.fontSize);
+      if (measurements.fontWeight) existing.fontWeights.push(measurements.fontWeight);
     } else {
-      navVariants.set(signature, {
-        component: 'navigation',
-        variant: 'nav-item',
-        count: 1,
-        colors,
-        measurements,
+      variantData.set(signature, {
+        usage: {
+          component: 'navigation',
+          variant: 'nav-item',
+          count: 1,
+          colors,
+          measurements,
+        },
+        heights: measurements.height ? [measurements.height] : [],
+        paddings: measurements.padding ? [measurements.padding] : [],
+        fontSizes: measurements.fontSize ? [measurements.fontSize] : [],
+        fontWeights: measurements.fontWeight ? [measurements.fontWeight] : [],
       });
     }
   }
 
-  return Array.from(navVariants.values())
+  // Calculate most common measurements for each variant
+  for (const data of variantData.values()) {
+    // Most common height
+    if (data.heights.length > 0) {
+      const heightCounts = new Map<number, number>();
+      data.heights.forEach(h => heightCounts.set(h, (heightCounts.get(h) || 0) + 1));
+      const mostCommon = Array.from(heightCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0][0];
+      data.usage.measurements!.height = mostCommon;
+    }
+
+    // Most common padding
+    if (data.paddings.length > 0) {
+      const paddingCounts = new Map<string, number>();
+      data.paddings.forEach(p => paddingCounts.set(p, (paddingCounts.get(p) || 0) + 1));
+      const mostCommon = Array.from(paddingCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0][0];
+      data.usage.measurements!.padding = mostCommon;
+    }
+
+    // Most common font size
+    if (data.fontSizes.length > 0) {
+      const fontSizeCounts = new Map<string, number>();
+      data.fontSizes.forEach(fs => fontSizeCounts.set(fs, (fontSizeCounts.get(fs) || 0) + 1));
+      const mostCommon = Array.from(fontSizeCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0][0];
+      data.usage.measurements!.fontSize = mostCommon;
+    }
+
+    // Most common font weight
+    if (data.fontWeights.length > 0) {
+      const fontWeightCounts = new Map<string, number>();
+      data.fontWeights.forEach(fw => fontWeightCounts.set(fw, (fontWeightCounts.get(fw) || 0) + 1));
+      const mostCommon = Array.from(fontWeightCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0][0];
+      data.usage.measurements!.fontWeight = mostCommon;
+    }
+  }
+
+  return Array.from(variantData.values())
+    .map(d => d.usage)
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 }

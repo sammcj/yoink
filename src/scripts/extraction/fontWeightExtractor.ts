@@ -34,6 +34,8 @@ function mapWeightToSemanticName(weight: number): string {
   if (weight <= 200) return 'extralight';
   if (weight <= 300) return 'light';
   if (weight <= 400) return 'regular';
+  // Special handling for intermediate weights
+  if (weight === 450) return 'medium-light';
   if (weight <= 500) return 'medium';
   if (weight <= 600) return 'semibold';
   if (weight <= 700) return 'bold';
@@ -82,13 +84,18 @@ export function extractFontWeights(): FontWeightSystem {
   const elements = getCachedElements();
   const weightUsage = new Map<number, { count: number; usedIn: Set<string> }>();
 
-  // Sample elements for font weights
-  const sampleSize = Math.min(elements.length, 500);
+  // Sample MORE elements for font weights to capture all variants
+  const sampleSize = Math.min(elements.length, 1000);
 
   for (let i = 0; i < sampleSize; i++) {
     const element = elements[i];
     const styles = getCachedComputedStyle(element);
     const fontWeight = styles.fontWeight;
+
+    // Skip if element is hidden
+    if (styles.display === 'none' || styles.visibility === 'hidden') {
+      continue;
+    }
 
     // Parse font weight (can be numeric like "400" or keyword like "bold")
     let numericWeight: number;
@@ -101,7 +108,14 @@ export function extractFontWeights(): FontWeightSystem {
     } else if (fontWeight === 'bolder') {
       numericWeight = 700;
     } else {
-      numericWeight = parseInt(fontWeight) || 400;
+      // Parse as number, supporting fractional weights like 450
+      const parsed = parseFloat(fontWeight);
+      numericWeight = isNaN(parsed) ? 400 : Math.round(parsed);
+    }
+
+    // Only track valid font weights (100-900 range)
+    if (numericWeight < 100 || numericWeight > 900) {
+      continue;
     }
 
     // Track usage

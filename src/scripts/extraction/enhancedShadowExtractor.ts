@@ -14,18 +14,92 @@ import {
 import type { ParsedShadow, EnhancedShadowSystem, ShadowWithUsage } from '../types/extraction';
 
 /**
- * Component type detection heuristics
+ * Detects button variant based on visual characteristics
+ */
+function detectButtonVariant(element: Element): string {
+  const className = (element as HTMLElement).className?.toLowerCase() || '';
+
+  // Check for explicit variant hints in class names or data attributes
+  if (className.includes('primary')) return 'button-primary';
+  if (className.includes('secondary')) return 'button-secondary';
+  if (className.includes('outline')) return 'button-outline';
+  if (className.includes('ghost') || className.includes('link')) return 'button-ghost';
+  if (className.includes('danger') || className.includes('destructive')) return 'button-danger';
+  if (className.includes('success')) return 'button-success';
+
+  const dataVariant = element.getAttribute('data-variant') ||
+                     element.getAttribute('data-type') ||
+                     element.getAttribute('data-kind');
+  if (dataVariant) {
+    const variant = dataVariant.toLowerCase();
+    if (['primary', 'secondary', 'outline', 'ghost', 'danger', 'success'].includes(variant)) {
+      return `button-${variant}`;
+    }
+  }
+
+  // Analyze background color if available (quick heuristic)
+  try {
+    const styles = getCachedComputedStyle(element);
+    const bg = styles.backgroundColor;
+
+    const isTransparent = bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent';
+    if (isTransparent) {
+      const hasBorder = parseFloat(styles.borderWidth) > 0;
+      return hasBorder ? 'button-outline' : 'button-ghost';
+    }
+
+    // Check if it's a colored button (likely primary)
+    const rgbMatch = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbMatch) {
+      const r = parseInt(rgbMatch[1]);
+      const g = parseInt(rgbMatch[2]);
+      const b = parseInt(rgbMatch[3]);
+      const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+
+      // High saturation = likely primary/accent button
+      if (saturation > 50) {
+        // Check for specific colors
+        const isReddish = r > g + 30 && r > b + 30 && r > 150;
+        const isGreenish = g > r + 30 && g > b + 30 && g > 150;
+        const isPurplish = (r > 80 && b > 80 && Math.abs(r - b) < 50 && g < r - 20);
+        const isBlueish = b > r + 20 && b > g + 20;
+
+        if (isReddish) return 'button-danger';
+        if (isGreenish) return 'button-success';
+        if (isPurplish || isBlueish) return 'button-primary';
+      }
+
+      // Low saturation grayscale = likely default/secondary
+      if (saturation < 30) {
+        return 'button-secondary';
+      }
+    }
+  } catch (e) {
+    // Style access failed, fall back to generic
+  }
+
+  return 'button';
+}
+
+/**
+ * Component type detection heuristics with variant specificity
  */
 function detectComponentType(element: Element): string {
   const tagName = element.tagName.toLowerCase();
   const className = (element as HTMLElement).className?.toLowerCase() || '';
   const role = element.getAttribute('role');
 
-  // Button detection
-  if (tagName === 'button' || role === 'button') return 'button';
+  // Button detection with variant
+  if (tagName === 'button' || role === 'button') {
+    return detectButtonVariant(element);
+  }
 
-  // Card detection
-  if (className.includes('card') || tagName === 'article') return 'card';
+  // Card detection with variant
+  if (className.includes('card') || tagName === 'article') {
+    if (className.includes('elevated') || className.includes('raised')) return 'card-elevated';
+    if (className.includes('outlined')) return 'card-outlined';
+    return 'card';
+  }
 
   // Modal detection
   if (className.includes('modal') || className.includes('dialog') || role === 'dialog') return 'modal';

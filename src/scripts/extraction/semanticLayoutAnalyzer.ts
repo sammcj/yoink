@@ -256,12 +256,26 @@ function extractLayoutRegions(): LayoutRegion[] {
     const width = computedWidth > 0 ? computedWidth : rect.width;
     const height = computedHeight > 0 ? computedHeight : rect.height;
 
+    // Detect if height is 100vh (full viewport height)
+    // Check if height is >= 90% of viewport height OR if element explicitly uses 100vh
+    let heightStr: string;
+    const isFullViewportHeight = height >= window.innerHeight * 0.9;
+    const hasExplicitVh = (sidebar as HTMLElement).style?.height?.includes('vh') ||
+                         (sidebar as HTMLElement).style?.minHeight?.includes('vh') ||
+                         (sidebar as HTMLElement).style?.maxHeight?.includes('vh');
+
+    if (isFullViewportHeight || hasExplicitVh) {
+      heightStr = '100vh';
+    } else {
+      heightStr = `${Math.round(height)}px`;
+    }
+
     regions.push({
       name: 'sidebar',
       role: 'navigation',
       position,
       width: `${Math.round(width)}px`,
-      height: `${Math.round(height)}px`,
+      height: heightStr,
       contains: contains.length > 0 ? contains : ['navigation'],
       background: styles.backgroundColor !== 'rgba(0, 0, 0, 0)' ? styles.backgroundColor : undefined,
       zIndex: styles.zIndex !== 'auto' ? styles.zIndex : undefined
