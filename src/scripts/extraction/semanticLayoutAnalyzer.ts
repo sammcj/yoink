@@ -177,6 +177,9 @@ function extractLayoutRegions(): LayoutRegion[] {
   const allElements = Array.from(document.querySelectorAll('*'));
 
   for (const el of allElements.slice(0, 1000)) {
+    // CRITICAL: Check visibility first to avoid hidden elements
+    if (!isVisible(el)) continue;
+
     const rect = el.getBoundingClientRect();
     const styles = getCachedComputedStyle(el);
 
@@ -195,8 +198,9 @@ function extractLayoutRegions(): LayoutRegion[] {
     // Calculate how close to full viewport height (percentage)
     const heightRatio = actualHeight / window.innerHeight;
 
-    // Must be at least 70% of viewport height to be considered
-    if (heightRatio < 0.7) continue;
+    // More lenient: 50% of viewport height (was 70%)
+    // This catches sidebars that don't quite reach full height due to headers/footers
+    if (heightRatio < 0.5) continue;
 
     // Score based on height ratio (prefer taller elements)
     // Also boost score if element has sidebar-related class/id
@@ -501,6 +505,9 @@ function extractLayoutMeasurements(): LayoutMeasurements {
   const allElements = Array.from(document.querySelectorAll('*'));
 
   for (const el of allElements.slice(0, 1000)) {
+    // CRITICAL: Check visibility first to avoid hidden elements
+    if (!isVisible(el)) continue;
+
     const rect = el.getBoundingClientRect();
     const styles = getCachedComputedStyle(el);
 
@@ -519,8 +526,8 @@ function extractLayoutMeasurements(): LayoutMeasurements {
     // Calculate how close to full viewport height
     const heightRatio = actualHeight / window.innerHeight;
 
-    // Must be at least 70% of viewport height
-    if (heightRatio < 0.7) continue;
+    // More lenient: 50% of viewport height (was 70%)
+    if (heightRatio < 0.5) continue;
 
     // Score based on height ratio + semantic naming
     const classNameStr = String(el.className || '').toLowerCase();
