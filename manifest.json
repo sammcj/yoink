@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Yoink",
   "version": "1.0.0",
-  "description": "Extract design systems from any website into YAML. Perfect for feeding to AI coding assistants to match designs.",
+  "description": "Extract any website's design system as YAML and recreate it with AI coding assistants.",
   "permissions": [
     "activeTab",
     "scripting",
