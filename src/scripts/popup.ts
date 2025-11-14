@@ -29,6 +29,12 @@ scanButton.addEventListener('click', async () => {
       throw new Error('No active tab found');
     }
 
+    // Inject the content script programmatically
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['scripts/contentScript.js']
+    });
+
     const includeComponents = includeComponentsCheckbox.checked;
 
     chrome.tabs.sendMessage(
@@ -38,7 +44,7 @@ scanButton.addEventListener('click', async () => {
         hideLoading();
 
         if (chrome.runtime.lastError) {
-          showError('Extension not loaded on this page. Try refreshing the page.');
+          showError('Failed to communicate with page. Try refreshing.');
           return;
         }
 
